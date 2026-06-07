@@ -252,6 +252,7 @@ struct TokenHeatmap: View {
             let summaries = makeSummaries()
             let maxTokens = max(summaries.map(\.tokens).max() ?? 1, 1)
             let columns = makeColumnIndices()
+            let selectedIndex = hoveredIndex ?? summaries.indices.last
             ZStack(alignment: .topLeading) {
                 HStack(alignment: .top, spacing: gap) {
                     ForEach(columns.indices, id: \.self) { columnIndex in
@@ -264,7 +265,7 @@ struct TokenHeatmap: View {
                                         .frame(width: cellSize, height: cellSize)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .stroke(hoveredIndex == dayIndex ? Color.blue : Color.clear, lineWidth: 1.4)
+                                                .stroke(selectedIndex == dayIndex ? Color.blue : Color.clear, lineWidth: 1.4)
                                         )
                                         .help(tooltip(for: summary))
                                 } else {
@@ -320,7 +321,16 @@ struct TokenHeatmap: View {
         let rawRow = Int(((location.y - cellSize / 2) / pitch).rounded())
         let column = min(max(rawColumn, 0), columnCount - 1)
         let row = min(max(rawRow, 0), rows - 1)
-        return min(column * rows + row, dailyUsage.count - 1)
+        let center = CGPoint(
+            x: CGFloat(column) * pitch + cellSize / 2,
+            y: CGFloat(row) * pitch + cellSize / 2
+        )
+        let distance = hypot(location.x - center.x, location.y - center.y)
+        guard distance <= cellSize else { return nil }
+
+        let dayIndex = column * rows + row
+        guard dayIndex < dailyUsage.count else { return nil }
+        return dayIndex
     }
 
     private func color(for summary: HeatmapUsageSummary, maxTokens: Int) -> Color {
