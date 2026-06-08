@@ -3,6 +3,19 @@ import SwiftUI
 
 struct DashboardView: View {
     @StateObject private var store = CodexUsageStore()
+    @StateObject private var liveMonitor = LiveRateMonitor()
+    @StateObject private var floatingPanel = FloatingTokenPanelController()
+    @StateObject private var statusBarPanel = StatusBarTokenController()
+    @AppStorage("tokenDisplayMode") private var tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
+    @AppStorage("preciseTokenCountingEnabled") private var preciseTokenCountingEnabled = false
+
+    private var tokenDisplayMode: Binding<TokenDisplayMode> {
+        Binding {
+            TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .off
+        } set: { mode in
+            tokenDisplayModeRaw = mode.rawValue
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -23,6 +36,12 @@ struct DashboardView: View {
 
                     StatStrip(stats: store.snapshot.stats)
 
+                    LiveRateView(
+                        monitor: liveMonitor,
+                        tokenDisplayMode: tokenDisplayMode,
+                        preciseTokenCountingEnabled: $preciseTokenCountingEnabled
+                    )
+
                     ActivitySection(
                         dailyUsage: store.snapshot.dailyUsage,
                         selectedMode: $store.selectedMode
@@ -33,6 +52,21 @@ struct DashboardView: View {
                 .padding(.horizontal, 54)
                 .padding(.vertical, 28)
             }
+        }
+        .onAppear {
+            liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
+            updateTokenDisplaySurface()
+            updateUsageRefreshCadence()
+        }
+        .onChange(of: tokenDisplayModeRaw) {
+            updateTokenDisplaySurface()
+            updateUsageRefreshCadence()
+        }
+        .onChange(of: preciseTokenCountingEnabled) {
+            liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
+        }
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
+            updateUsageRefreshCadence()
         }
         .toolbar {
             ToolbarItemGroup {
@@ -55,6 +89,41 @@ struct DashboardView: View {
                     Label("Export PNG", systemImage: "photo")
                 }
             }
+        }
+    }
+
+    private func updateTokenDisplaySurface() {
+        switch TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .off {
+        case .off:
+            floatingPanel.close()
+            statusBarPanel.close()
+        case .floating:
+            statusBarPanel.close()
+            floatingPanel.show(store: store, monitor: liveMonitor) {
+                tokenDisplayModeRaw = TokenDisplayMode.off.rawValue
+            }
+        case .statusBar:
+            floatingPanel.close()
+            statusBarPanel.show(store: store, monitor: liveMonitor) {
+                tokenDisplayModeRaw = TokenDisplayMode.off.rawValue
+            }
+        }
+    }
+
+    private func updateUsageRefreshCadence() {
+        let displayMode = TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .off
+        let onlyCompactSurfaceVisible = displayMode != .off && !hasVisibleDashboardWindow()
+        store.setRefreshInterval(onlyCompactSurfaceVisible ? 180 : 60)
+    }
+
+    private func hasVisibleDashboardWindow() -> Bool {
+        guard !NSApp.isHidden else { return false }
+        return NSApp.windows.contains { window in
+            window.isVisible
+                && !window.isMiniaturized
+                && window.occlusionState.contains(.visible)
+                && !(window is NSPanel)
+                && window.contentViewController != nil
         }
     }
 }
