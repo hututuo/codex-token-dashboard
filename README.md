@@ -10,6 +10,10 @@ A local-first macOS SwiftUI app for visualizing Codex token usage from local ses
   <img src="Assets/DashboardPreview.png" alt="Codex Token Dashboard screenshot" width="100%">
 </p>
 
+<p align="center">
+  <img src="Assets/FloatingPanelPreview.png" alt="Floating live token-rate panel" width="420">
+</p>
+
 ## Install
 
 Recommended one-line install:
@@ -22,6 +26,14 @@ The installer downloads the latest `.app.zip` release, unpacks it, installs the 
 
 This helps avoid the common macOS "app is damaged and can't be opened" message caused by browser-downloaded unsigned apps being quarantined. It is not a full replacement for Apple Developer ID signing and notarization. Company MDM, security software, or stricter macOS policy can still block unsigned apps.
 
+## Update
+
+Use the same one-line command to update. It always downloads the latest GitHub release and replaces the existing app:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-dashboard/main/install.sh | bash
+```
+
 ## What It Does
 
 - Auto-detects local Codex data from a saved directory, `CODEX_HOME`, `~/.codex`, `~/.config/codex`, or one-level home-directory candidates.
@@ -30,9 +42,23 @@ This helps avoid the common macOS "app is damaged and can't be opened" message c
 - Shows the active data source in the header and provides a fallback directory picker.
 - Shows a profile-style yearly heatmap with nearest-cell hover details.
 - Heatmap modes use clear metrics: daily totals, calendar-week totals, or cumulative totals through the selected day.
+- Tracks live all-session Codex output speed from local stream logs, with a compact drill-down row for a selected session.
+- Offers a lightweight floating live-rate panel with total tok/s, lifetime tokens, today's tokens, and today's request count.
+- Supports a precise `o200k_base` token-counting toggle for live stream deltas, with a calibrated lightweight estimator as the default.
 - Shows recent 24-hour token and request activity at 30-minute granularity, with hover details for each time point.
 - Refreshes automatically every minute and also provides a manual refresh button.
 - Exports a shareable PNG snapshot and CSV summary.
+
+## Changelog
+
+### v0.2.0
+
+- Added all-session live token-rate monitoring from local Codex stream logs.
+- Added a compact floating live-rate panel for always-visible tok/s, total usage, daily usage, and request count.
+- Added single-session drill-down, precise token-counting toggle, floating-panel opacity control, and a status-bar display placeholder.
+- Tightened the main dashboard layout so live-rate controls, heatmap, and 24-hour chart fit more cleanly.
+- Added a lighter app icon and refreshed the README screenshots.
+- Added the one-line update command, reusing the installer as an updater.
 
 ## Privacy
 

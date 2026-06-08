@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Codex Token Dashboard"
 PRODUCT_NAME="CodexTokenDashboard"
 CONFIGURATION="${1:-debug}"
-APP_VERSION="${APP_VERSION:-0.1.3}"
+APP_VERSION="${APP_VERSION:-0.2.0}"
 
 cd "$ROOT_DIR"
 "$ROOT_DIR/scripts/prepare_tiktoken_lfs.sh"
