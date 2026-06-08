@@ -19,7 +19,7 @@ struct DashboardView: View {
 
     var body: some View {
         ZStack {
-            Color(.windowBackgroundColor)
+            AppTheme.pageBackground
                 .ignoresSafeArea()
 
             ScrollView {
@@ -90,6 +90,7 @@ struct DashboardView: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 
     private func updateTokenDisplaySurface() {
@@ -163,7 +164,7 @@ struct HeaderView: View {
                         .padding(.vertical, 4)
                         .background(
                             Capsule()
-                                .stroke(Color.gray.opacity(0.22), lineWidth: 1)
+                                .stroke(AppTheme.borderStrong, lineWidth: 1)
                         )
                     DataSourceBadge(path: dataSourceLabel, origin: dataSourceOrigin)
                     Text(status)
@@ -213,11 +214,11 @@ struct DataSourceBadge: View {
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(Color.gray.opacity(0.08))
+                .fill(AppTheme.raisedBackground)
         )
         .overlay(
             Capsule()
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.border, lineWidth: 1)
         )
         .frame(maxWidth: 260)
         .help(path)
@@ -242,13 +243,13 @@ struct StatStrip: View {
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.78))
+                .fill(AppTheme.panelBackground)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.03), radius: 20, y: 10)
+        .shadow(color: AppTheme.shadow, radius: 18, y: 10)
         .frame(maxWidth: 980)
     }
 
@@ -334,7 +335,7 @@ struct TokenHeatmap: View {
                                         .frame(width: cellSize, height: cellSize)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .stroke(selectedIndex == dayIndex ? Color.blue : Color.clear, lineWidth: 1.4)
+                                                .stroke(selectedIndex == dayIndex ? AppTheme.accentBlue : Color.clear, lineWidth: 1.4)
                                         )
                                         .help(tooltip(for: summary))
                                 } else {
@@ -404,19 +405,19 @@ struct TokenHeatmap: View {
 
     private func color(for summary: HeatmapUsageSummary, maxTokens: Int) -> Color {
         let value = summary.tokens
-        guard value > 0 else { return Color.gray.opacity(0.09) }
+        guard value > 0 else { return AppTheme.emptyCell }
         let ratio = min(1.0, Double(value) / Double(max(maxTokens, 1)))
         switch ratio {
         case 0..<0.18:
-            return Color(red: 0.78, green: 0.89, blue: 1.0)
+            return Color(red: 0.105, green: 0.180, blue: 0.260)
         case 0.18..<0.38:
-            return Color(red: 0.55, green: 0.78, blue: 1.0)
+            return Color(red: 0.120, green: 0.280, blue: 0.430)
         case 0.38..<0.62:
-            return Color(red: 0.29, green: 0.62, blue: 0.96)
+            return Color(red: 0.130, green: 0.400, blue: 0.660)
         case 0.62..<0.82:
-            return Color(red: 0.10, green: 0.45, blue: 0.86)
+            return Color(red: 0.110, green: 0.520, blue: 0.850)
         default:
-            return Color(red: 0.02, green: 0.32, blue: 0.68)
+            return Color(red: 0.180, green: 0.680, blue: 1.000)
         }
     }
 
@@ -501,13 +502,13 @@ struct HeatmapHoverInfo: View {
     var body: some View {
         HStack(spacing: 18) {
             Image(systemName: summary == nil ? "cursorarrow.rays" : summary?.iconName ?? "calendar")
-                .foregroundStyle(summary == nil ? Color.secondary : Color.blue)
+                .foregroundStyle(summary == nil ? Color.secondary : AppTheme.accentBlue)
             if let summary {
                 Text(summary.title)
                     .font(.system(size: 13, weight: .medium))
                 Text("\(summary.tokens.abbreviatedTokens) tokens")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(AppTheme.accentBlue)
                 Text("\(summary.calls) calls")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
@@ -525,7 +526,7 @@ struct HeatmapHoverInfo: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.gray.opacity(0.07))
+                .fill(AppTheme.insetBackground)
         )
     }
 }
@@ -614,7 +615,7 @@ struct RecentUsageChart: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color.blue.opacity(0.045), Color.clear],
+                                colors: [AppTheme.accentBlue.opacity(0.10), Color.clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -628,24 +629,24 @@ struct RecentUsageChart: View {
                             path.move(to: CGPoint(x: plot.minX, y: y))
                             path.addLine(to: CGPoint(x: plot.maxX, y: y))
                         }
-                        .stroke(Color.black.opacity(0.055), style: StrokeStyle(lineWidth: 1, dash: [4, 8]))
+                        .stroke(AppTheme.grid, style: StrokeStyle(lineWidth: 1, dash: [4, 8]))
                     }
 
                     tokenAreaPath(plot: plot, step: step, maxTokens: maxTokens)
                         .fill(
                             LinearGradient(
-                                colors: [Color.blue.opacity(0.24), Color.blue.opacity(0.03), Color.clear],
+                                colors: [AppTheme.accentBlue.opacity(0.22), AppTheme.accentBlue.opacity(0.055), Color.clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
 
                     tokenLinePath(plot: plot, step: step, maxTokens: maxTokens)
-                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
-                        .shadow(color: .blue.opacity(0.20), radius: 5, y: 4)
+                        .stroke(AppTheme.accentBlue, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+                        .shadow(color: AppTheme.accentBlue.opacity(0.18), radius: 5, y: 4)
 
                     callLinePath(plot: plot, step: step, maxCalls: maxCalls)
-                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        .stroke(AppTheme.accentOrange, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
 
                     if let activeIndex {
                         let tokenPoint = tokenPoint(for: activeIndex, in: plot, step: step, maxTokens: maxTokens)
@@ -655,18 +656,18 @@ struct RecentUsageChart: View {
                             path.move(to: CGPoint(x: tokenPoint.x, y: plot.minY))
                             path.addLine(to: CGPoint(x: tokenPoint.x, y: plot.maxY))
                         }
-                        .stroke(Color.blue.opacity(0.24), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .stroke(AppTheme.accentBlue.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
 
                         Circle()
-                            .fill(Color.white)
+                            .fill(AppTheme.pageBackground)
                             .frame(width: 12, height: 12)
-                            .overlay(Circle().stroke(Color.blue, lineWidth: 3))
+                            .overlay(Circle().stroke(AppTheme.accentBlue, lineWidth: 3))
                             .position(tokenPoint)
 
                         Circle()
-                            .fill(Color.white)
+                            .fill(AppTheme.pageBackground)
                             .frame(width: 10, height: 10)
-                            .overlay(Circle().stroke(Color.orange, lineWidth: 2.4))
+                            .overlay(Circle().stroke(AppTheme.accentOrange, lineWidth: 2.4))
                             .position(callPoint)
 
                         ChartHoverBubble(bin: bins[activeIndex], isHovering: hoveredIndex != nil)
@@ -773,26 +774,26 @@ struct ChartHoverBubble: View {
             HStack(spacing: 6) {
                 Text(isHovering ? "当前点" : "最新点")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(isHovering ? .blue : .secondary)
+                    .foregroundStyle(isHovering ? AppTheme.accentBlue : .secondary)
                 Text(timeRange)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             Text(bin.tokens.abbreviatedTokens)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(AppTheme.accentBlue)
             Text("请求 \(bin.calls) 次 · avg \(average.abbreviatedTokens)")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(AppTheme.hoverBubble, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                .stroke(AppTheme.borderStrong, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.10), radius: 12, y: 7)
+        .shadow(color: AppTheme.shadow, radius: 12, y: 7)
     }
 
     private var average: Int {

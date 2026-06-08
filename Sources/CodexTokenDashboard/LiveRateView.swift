@@ -109,13 +109,13 @@ struct LiveRateView: View {
         .frame(maxWidth: 980)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.78))
+                .fill(AppTheme.panelBackground)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.03), radius: 20, y: 10)
+        .shadow(color: AppTheme.shadow, radius: 18, y: 10)
     }
 }
 
@@ -154,7 +154,7 @@ struct LiveSelectedThreadRow: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.gray.opacity(0.07))
+                .fill(AppTheme.insetBackground)
         )
     }
 }
@@ -198,7 +198,7 @@ struct LiveBreakdownChip: View {
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.gray.opacity(0.08))
+                .fill(AppTheme.raisedBackground)
         )
     }
 }
@@ -209,7 +209,7 @@ struct LiveRateGauge: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.gray.opacity(0.08))
+                .fill(AppTheme.insetBackground)
 
             GeometryReader { proxy in
                 let capped = min(max(value, 0), 120)
@@ -217,7 +217,7 @@ struct LiveRateGauge: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color.cyan.opacity(0.98), Color.blue.opacity(0.92)],
+                            colors: [AppTheme.accentCyan, AppTheme.accentBlue],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -263,7 +263,7 @@ struct LiveMetricCell: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.gray.opacity(0.08))
+                .fill(AppTheme.raisedBackground)
         )
     }
 }
@@ -280,7 +280,7 @@ struct LivePill: View {
             .padding(.vertical, 5)
             .background(
                 Capsule()
-                    .fill(Color.gray.opacity(0.08))
+                    .fill(AppTheme.raisedBackground)
             )
             .lineLimit(1)
     }
