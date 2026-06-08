@@ -23,7 +23,7 @@ struct DashboardView: View {
             AppTheme.pageBackground
                 .ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 24) {
                     HeaderView(
                         snapshot: store.snapshot,
@@ -54,6 +54,7 @@ struct DashboardView: View {
                 .padding(.horizontal, 54)
                 .padding(.vertical, 28)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
@@ -315,56 +316,63 @@ struct TokenHeatmap: View {
     @State private var hoveredIndex: Int?
 
     private let rows = 7
-    private let cellSize: CGFloat = 12
     private let gap: CGFloat = 4
+    private let trailingInset: CGFloat = 9
 
     var body: some View {
-        VStack(spacing: 10) {
+        GeometryReader { proxy in
             let summaries = makeSummaries()
             let maxTokens = max(summaries.map(\.tokens).max() ?? 1, 1)
             let columns = makeColumnIndices()
             let selectedIndex = hoveredIndex ?? summaries.indices.last
-            ZStack(alignment: .topLeading) {
-                HStack(alignment: .top, spacing: gap) {
-                    ForEach(columns.indices, id: \.self) { columnIndex in
-                        VStack(spacing: gap) {
-                            ForEach(0..<rows, id: \.self) { rowIndex in
-                                if let dayIndex = columns[columnIndex][safe: rowIndex],
-                                   let summary = summaries[safe: dayIndex] {
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(color(for: summary, maxTokens: maxTokens))
-                                        .frame(width: cellSize, height: cellSize)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .stroke(selectedIndex == dayIndex ? AppTheme.accentBlue : Color.clear, lineWidth: 1.4)
-                                        )
-                                        .help(tooltip(for: summary))
-                                } else {
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(Color.clear)
-                                        .frame(width: cellSize, height: cellSize)
+            let cellSize = adaptiveCellSize(containerWidth: proxy.size.width, columnCount: columns.count)
+            let gridWidth = gridWidth(columnCount: columns.count, cellSize: cellSize)
+            let gridHeight = gridHeight(cellSize: cellSize)
+
+            VStack(spacing: 10) {
+                ZStack(alignment: .topLeading) {
+                    HStack(alignment: .top, spacing: gap) {
+                        ForEach(columns.indices, id: \.self) { columnIndex in
+                            VStack(spacing: gap) {
+                                ForEach(0..<rows, id: \.self) { rowIndex in
+                                    if let dayIndex = columns[columnIndex][safe: rowIndex],
+                                       let summary = summaries[safe: dayIndex] {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(color(for: summary, maxTokens: maxTokens))
+                                            .frame(width: cellSize, height: cellSize)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                    .stroke(selectedIndex == dayIndex ? AppTheme.accentBlue : Color.clear, lineWidth: 1.4)
+                                            )
+                                            .help(tooltip(for: summary))
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(Color.clear)
+                                            .frame(width: cellSize, height: cellSize)
+                                    }
                                 }
                             }
                         }
                     }
+
+                    HoverTrackingArea(
+                        onMove: { location in
+                            hoveredIndex = nearestDayIndex(at: location, columnCount: columns.count, cellSize: cellSize)
+                        },
+                        onExit: {
+                            hoveredIndex = nil
+                        }
+                    )
+                    .frame(width: gridWidth, height: gridHeight)
                 }
+                .frame(width: gridWidth, height: gridHeight, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                HoverTrackingArea(
-                    onMove: { location in
-                        hoveredIndex = nearestDayIndex(at: location, columnCount: columns.count)
-                    },
-                    onExit: {
-                        hoveredIndex = nil
-                    }
-                )
-                .frame(width: gridWidth(columnCount: columns.count), height: gridHeight)
+                MonthLabels(dailyUsage: dailyUsage, cellSize: cellSize, gap: gap)
+                HeatmapHoverInfo(summary: hoveredIndex.flatMap { summaries[safe: $0] } ?? summaries.last)
             }
-            .frame(width: gridWidth(columnCount: columns.count), height: gridHeight, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            MonthLabels(dailyUsage: dailyUsage, cellSize: cellSize, gap: gap)
-            HeatmapHoverInfo(summary: hoveredIndex.flatMap { summaries[safe: $0] } ?? summaries.last)
         }
+        .frame(height: 190)
     }
 
     private func makeColumnIndices() -> [[Int]] {
@@ -373,21 +381,25 @@ struct TokenHeatmap: View {
         }
     }
 
-    private var pitch: CGFloat {
-        cellSize + gap
+    private func adaptiveCellSize(containerWidth: CGFloat, columnCount: Int) -> CGFloat {
+        guard columnCount > 0 else { return 12 }
+        let targetWidth = max(0, containerWidth - trailingInset)
+        let availableForCells = targetWidth - CGFloat(columnCount - 1) * gap
+        return max(10, availableForCells / CGFloat(columnCount))
     }
 
-    private var gridHeight: CGFloat {
+    private func gridHeight(cellSize: CGFloat) -> CGFloat {
         CGFloat(rows) * cellSize + CGFloat(rows - 1) * gap
     }
 
-    private func gridWidth(columnCount: Int) -> CGFloat {
+    private func gridWidth(columnCount: Int, cellSize: CGFloat) -> CGFloat {
         guard columnCount > 0 else { return 0 }
         return CGFloat(columnCount) * cellSize + CGFloat(columnCount - 1) * gap
     }
 
-    private func nearestDayIndex(at location: CGPoint, columnCount: Int) -> Int? {
+    private func nearestDayIndex(at location: CGPoint, columnCount: Int, cellSize: CGFloat) -> Int? {
         guard !dailyUsage.isEmpty, columnCount > 0 else { return nil }
+        let pitch = cellSize + gap
         let rawColumn = Int(((location.x - cellSize / 2) / pitch).rounded())
         let rawRow = Int(((location.y - cellSize / 2) / pitch).rounded())
         let column = min(max(rawColumn, 0), columnCount - 1)

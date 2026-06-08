@@ -13,47 +13,49 @@ struct LiveRateView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             LiveRateHeader(
-                snapshot: primarySnapshot
+                snapshot: primarySnapshot,
+                onReset: monitor.reset
             )
 
             HStack(alignment: .top, spacing: 10) {
                 LiveRateGauge(value: primarySnapshot.rollingTokensPerSecond)
                     .frame(width: 132, height: 82)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        LiveMetricCell(
-                            value: String(format: "%.1f", primarySnapshot.rollingTokensPerSecond),
-                            label: "全会话 tok/s"
-                        )
-                        LiveMetricCell(
-                            value: "\(primarySnapshot.breakdown.modelGenerated)",
-                            label: "模型生成"
-                        )
-                        LiveMetricCell(
-                            value: "\(primarySnapshot.outputTokens)",
-                            label: "综合 token"
-                        )
-                    }
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 6) {
+                            LiveMetricCell(
+                                value: String(format: "%.1f", primarySnapshot.rollingTokensPerSecond),
+                                label: "全会话 tok/s"
+                            )
+                            LiveMetricCell(
+                                value: "\(primarySnapshot.breakdown.modelGenerated)",
+                                label: "模型生成"
+                            )
+                            LiveMetricCell(
+                                value: "\(primarySnapshot.outputTokens)",
+                                label: "综合 token"
+                            )
+                        }
 
-                    HStack(spacing: 5) {
-                        LivePill(systemImage: "sum", text: primarySnapshot.scopeLabel)
-                        LivePill(systemImage: "point.3.connected.trianglepath.dotted", text: primarySnapshot.interfaceLabel)
-                        LivePill(systemImage: tokenDisplayMode.systemImage, text: tokenDisplayMode.label)
-                        Spacer(minLength: 0)
-                    }
+                        HStack(spacing: 5) {
+                            LivePill(systemImage: "sum", text: primarySnapshot.scopeLabel)
+                            LivePill(systemImage: "point.3.connected.trianglepath.dotted", text: primarySnapshot.interfaceLabel)
+                            LivePill(systemImage: tokenDisplayMode.systemImage, text: tokenDisplayMode.label)
+                            Spacer(minLength: 0)
+                        }
 
-                    LiveBreakdownRow(breakdown: primarySnapshot.breakdown)
-                    HStack(spacing: 8) {
+                        LiveBreakdownRow(breakdown: primarySnapshot.breakdown)
                         LiveSelectedThreadRow(snapshot: monitor.snapshot)
-                        Spacer(minLength: 8)
-                        LiveRateControls(
-                            monitor: monitor,
-                            tokenDisplayMode: $tokenDisplayMode,
-                            preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
-                            floatingPanelOpacity: $floatingPanelOpacity
-                        )
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    LiveRateControls(
+                        monitor: monitor,
+                        tokenDisplayMode: $tokenDisplayMode,
+                        preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
+                        floatingPanelOpacity: $floatingPanelOpacity
+                    )
                 }
             }
         }
@@ -73,6 +75,7 @@ struct LiveRateView: View {
 
 struct LiveRateHeader: View {
     let snapshot: LiveRateSnapshot
+    let onReset: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -87,6 +90,14 @@ struct LiveRateHeader: View {
                 .truncationMode(.middle)
 
             Spacer(minLength: 6)
+
+            Button(action: onReset) {
+                Label("重置整体速率", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("重置全会话实时速率窗口")
         }
     }
 }
@@ -98,69 +109,66 @@ struct LiveRateControls: View {
     @Binding var floatingPanelOpacity: Double
 
     var body: some View {
-        HStack(spacing: 5) {
-            Menu {
-                ForEach(TokenDisplayMode.allCases) { mode in
-                    Button {
-                        tokenDisplayMode = mode
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(TokenDisplayMode.allCases) { mode in
+                        Button {
+                            tokenDisplayMode = mode
                     } label: {
                         if mode == tokenDisplayMode {
-                            Label(mode.label, systemImage: "checkmark")
+                            Label(mode.controlLabel, systemImage: "checkmark")
                         } else {
-                            Label(mode.label, systemImage: mode.systemImage)
+                            Label(mode.controlLabel, systemImage: mode.systemImage)
                         }
                     }
                 }
             } label: {
-                Label(tokenDisplayMode.label, systemImage: tokenDisplayMode.systemImage)
-                    .labelStyle(.iconOnly)
+                    Label("显示：\(tokenDisplayMode.controlLabel)", systemImage: tokenDisplayMode.systemImage)
+                }
+                .buttonStyle(.bordered)
+                .frame(width: 126)
+                .help("显示模式")
+
+                Menu {
+                    ForEach(monitor.threadOptions) { option in
+                        Button {
+                            monitor.selectThread(option.id)
+                        } label: {
+                            if option.id == monitor.selectedThreadID {
+                                Label(option.displayTitle, systemImage: "checkmark")
+                            } else {
+                                Text(option.displayTitle)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("查看单会话", systemImage: "sidebar.leading")
+                }
+                .buttonStyle(.bordered)
+                .frame(width: 126)
+                .help("查看单会话")
+
+                Toggle(isOn: $preciseTokenCountingEnabled) {
+                    Label("精准 token 统计", systemImage: "number")
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .frame(width: 134)
+                .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
             }
-            .buttonStyle(.bordered)
-            .help("显示模式")
 
             if tokenDisplayMode == .floating {
                 FloatingOpacityControl(opacity: $floatingPanelOpacity)
             }
-
-            Menu {
-                ForEach(monitor.threadOptions) { option in
-                    Button {
-                        monitor.selectThread(option.id)
-                    } label: {
-                        if option.id == monitor.selectedThreadID {
-                            Label(option.displayTitle, systemImage: "checkmark")
-                        } else {
-                            Text(option.displayTitle)
-                        }
-                    }
-                }
-            } label: {
-                Label("单会话", systemImage: "sidebar.leading")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.bordered)
-            .help("查看单会话")
-
-            Toggle(isOn: $preciseTokenCountingEnabled) {
-                Label("精准", systemImage: "number")
-                    .labelStyle(.iconOnly)
-            }
-            .toggleStyle(.button)
-            .buttonStyle(.bordered)
-            .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
-
-            Button {
-                monitor.reset()
-            } label: {
-                Label("重置", systemImage: "arrow.triangle.2.circlepath")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.bordered)
-            .help("重置实时速率窗口")
         }
-        .padding(4)
+        .controlSize(.small)
+        .font(.system(size: 11, weight: .medium))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: 438, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(AppTheme.insetBackground)
         )
     }
@@ -170,20 +178,26 @@ struct FloatingOpacityControl: View {
     @Binding var opacity: Double
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "circle.lefthalf.filled")
-                .font(.system(size: 9, weight: .medium))
+        HStack(spacing: 8) {
+            Label("悬浮窗透明度", systemImage: "circle.lefthalf.filled")
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
+                .frame(width: 88, alignment: .leading)
             Slider(value: $opacity, in: 0.45...0.98, step: 0.01)
-                .frame(width: 42)
+                .frame(width: 262)
+            Text("\(Int((opacity * 100).rounded()))%")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 34, alignment: .trailing)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
         .background(
             Capsule()
                 .fill(AppTheme.raisedBackground.opacity(0.72))
         )
-        .frame(width: 62)
+        .frame(width: 414)
         .help("悬浮窗透明度")
     }
 }
