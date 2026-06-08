@@ -46,7 +46,6 @@ struct LiveRateView: View {
                         }
 
                         LiveBreakdownRow(breakdown: primarySnapshot.breakdown)
-                        LiveSelectedThreadRow(monitor: monitor)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -57,6 +56,9 @@ struct LiveRateView: View {
                     )
                 }
             }
+
+            LiveSelectedThreadRow(monitor: monitor)
+                .frame(maxWidth: .infinity)
         }
         .padding(12)
         .frame(maxWidth: 980)
@@ -125,7 +127,7 @@ struct LiveRateControls: View {
                     Label("显示：\(tokenDisplayMode.controlLabel)", systemImage: tokenDisplayMode.systemImage)
                 }
                 .buttonStyle(.bordered)
-                .frame(width: 154)
+                .frame(width: 139)
                 .help("显示模式")
 
                 Toggle(isOn: $preciseTokenCountingEnabled) {
@@ -133,19 +135,17 @@ struct LiveRateControls: View {
                 }
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
-                .frame(width: 154)
+                .frame(width: 139)
                 .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
             }
 
-            if tokenDisplayMode == .floating {
-                FloatingOpacityControl(opacity: $floatingPanelOpacity)
-            }
+            FloatingOpacityControl(opacity: $floatingPanelOpacity)
         }
         .controlSize(.small)
         .font(.system(size: 11, weight: .medium))
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(width: 342, alignment: .topLeading)
+        .frame(width: 306, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(AppTheme.insetBackground)
@@ -161,9 +161,9 @@ struct FloatingOpacityControl: View {
             Label("悬浮窗透明度", systemImage: "circle.lefthalf.filled")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 82, alignment: .leading)
+                .frame(width: 70, alignment: .leading)
             Slider(value: $opacity, in: 0.45...0.98, step: 0.01)
-                .frame(width: 166)
+                .frame(width: 126)
             Text("\(Int((opacity * 100).rounded()))%")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -176,7 +176,7 @@ struct FloatingOpacityControl: View {
             Capsule()
                 .fill(AppTheme.raisedBackground.opacity(0.72))
         )
-        .frame(width: 318)
+        .frame(width: 274)
         .help("悬浮窗透明度")
     }
 }
@@ -189,7 +189,7 @@ struct LiveSelectedThreadRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             Menu {
                 ForEach(monitor.threadOptions) { option in
                     Button {
@@ -203,44 +203,54 @@ struct LiveSelectedThreadRow: View {
                     }
                 }
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "sidebar.leading")
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("选中会话")
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Text(snapshot.threadTitle)
-                            .font(.system(size: 10, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
+                Label("选中会话", systemImage: "sidebar.leading")
+                    .font(.system(size: 10, weight: .semibold))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .frame(width: 170, alignment: .leading)
+            .frame(width: 96, alignment: .leading)
             .help("选择要查看的单会话")
+
+            HStack(spacing: 4) {
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(snapshot.threadTitle)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(AppTheme.raisedBackground)
+            )
+            .help(snapshot.threadTitle)
 
             Text(String(format: "%.1f tok/s", snapshot.rollingTokensPerSecond))
                 .font(.system(size: 11, weight: .semibold))
                 .monospacedDigit()
-                .frame(width: 70, alignment: .leading)
+                .frame(width: 64, alignment: .trailing)
 
             Text("\(snapshot.outputTokens) 综合")
                 .font(.system(size: 11, weight: .medium))
                 .monospacedDigit()
-                .frame(width: 74, alignment: .leading)
+                .frame(width: 54, alignment: .trailing)
 
             Text("\(snapshot.breakdown.modelGenerated) 模型")
                 .font(.system(size: 11, weight: .medium))
                 .monospacedDigit()
-                .frame(width: 66, alignment: .leading)
+                .frame(width: 48, alignment: .trailing)
 
             Text(snapshot.status)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .frame(width: 44, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

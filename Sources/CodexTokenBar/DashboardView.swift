@@ -7,12 +7,13 @@ struct DashboardView: View {
     @StateObject private var floatingPanel = FloatingTokenPanelController()
     @StateObject private var statusBarPanel = StatusBarTokenController()
     @AppStorage("tokenDisplayMode") private var tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
+    @AppStorage("tokenDisplayModeDefaultedToFloatingV021") private var tokenDisplayModeDefaultedToFloating = false
     @AppStorage("preciseTokenCountingEnabled") private var preciseTokenCountingEnabled = false
     @AppStorage("floatingPanelOpacity") private var floatingPanelOpacity = 0.88
 
     private var tokenDisplayMode: Binding<TokenDisplayMode> {
         Binding {
-            TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .off
+            TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .floating
         } set: { mode in
             tokenDisplayModeRaw = mode.rawValue
         }
@@ -57,6 +58,7 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
+            applyFloatingModeDefaultIfNeeded()
             liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
             updateTokenDisplaySurface()
             updateUsageRefreshCadence()
@@ -95,8 +97,16 @@ struct DashboardView: View {
         }
     }
 
+    private func applyFloatingModeDefaultIfNeeded() {
+        guard !tokenDisplayModeDefaultedToFloating else { return }
+        tokenDisplayModeDefaultedToFloating = true
+        if TokenDisplayMode(rawValue: tokenDisplayModeRaw) == nil || tokenDisplayModeRaw == TokenDisplayMode.off.rawValue {
+            tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
+        }
+    }
+
     private func updateTokenDisplaySurface() {
-        switch TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .off {
+        switch TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .floating {
         case .off:
             floatingPanel.close()
             statusBarPanel.close()
@@ -114,7 +124,7 @@ struct DashboardView: View {
     }
 
     private func updateUsageRefreshCadence() {
-        let displayMode = TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .off
+        let displayMode = TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .floating
         let onlyCompactSurfaceVisible = displayMode != .off && !hasVisibleDashboardWindow()
         store.setRefreshInterval(onlyCompactSurfaceVisible ? 180 : 60)
     }

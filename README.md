@@ -49,17 +49,9 @@ curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/instal
 - Refreshes automatically every minute and also provides a manual refresh button.
 - Exports a shareable PNG snapshot and CSV summary.
 
-## Changelog
+## Releases
 
-### v0.2.0
-
-- Renamed the app and repository to Codex Token Bar.
-- Added all-session live token-rate monitoring from local Codex stream logs.
-- Added a compact floating live-rate panel for always-visible tok/s, total usage, daily usage, and request count.
-- Added single-session drill-down, precise token-counting toggle, floating-panel opacity control, and a status-bar display placeholder.
-- Tightened the main dashboard layout so live-rate controls, heatmap, and 24-hour chart fit more cleanly.
-- Added a lighter app icon and refreshed the README screenshots.
-- Added the one-line update command, reusing the installer as an updater.
+Version notes and downloadable app zips live on the [GitHub Releases page](https://github.com/hututuo/codex-token-bar/releases).
 
 ## Privacy
 
