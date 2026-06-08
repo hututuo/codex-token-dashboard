@@ -4,21 +4,20 @@
   <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-<p align="center">
-  <img src="Assets/AppIcon.png" width="128" alt="Codex Token Bar app icon">
-</p>
+<table align="center">
+  <tr>
+    <td align="center" width="180">
+      <img src="Assets/AppIcon.png" width="112" alt="Codex Token Bar app icon"><br>
+      <strong>Codex Token Bar</strong>
+    </td>
+    <td align="center" width="280">
+      <img src="Assets/wechat-group-qr.jpeg" width="220" alt="HTT 的仓库交流群二维码"><br>
+      欢迎扫码加入群聊，讨论使用问题、交流想法，也会发布产品发布和更新通知。
+    </td>
+  </tr>
+</table>
 
 Codex Token Bar 是一个本地优先的 macOS SwiftUI 应用，用来从本地会话日志可视化 Codex token 使用量和实时输出速度。
-
-## 交流群
-
-<p align="center">
-  <img src="Assets/wechat-group-qr.jpeg" alt="HTT 的仓库交流群二维码" width="260">
-</p>
-
-<p align="center">
-  欢迎扫码加入群聊，讨论使用问题、互相交流，也会发布产品发布和更新通知。
-</p>
 
 <p align="center">
   <img src="Assets/DashboardPreview.png" alt="Codex Token Bar 主界面截图" width="100%">
