@@ -10,7 +10,7 @@ struct LiveRateView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             LiveRateHeader(
                 snapshot: primarySnapshot,
                 monitor: monitor,
@@ -18,12 +18,12 @@ struct LiveRateView: View {
                 preciseTokenCountingEnabled: $preciseTokenCountingEnabled
             )
 
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
                 LiveRateGauge(value: primarySnapshot.rollingTokensPerSecond)
-                    .frame(width: 178, height: 128)
+                    .frame(width: 158, height: 108)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 8) {
                         LiveMetricCell(
                             value: String(format: "%.1f", primarySnapshot.rollingTokensPerSecond),
                             label: "全会话 tok/s"
@@ -38,7 +38,7 @@ struct LiveRateView: View {
                         )
                     }
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         LivePill(systemImage: "sum", text: primarySnapshot.scopeLabel)
                         LivePill(systemImage: "point.3.connected.trianglepath.dotted", text: primarySnapshot.interfaceLabel)
                         LivePill(systemImage: tokenDisplayMode.systemImage, text: tokenDisplayMode.label)
@@ -50,7 +50,7 @@ struct LiveRateView: View {
                 }
             }
         }
-        .padding(18)
+        .padding(15)
         .frame(maxWidth: 980)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -71,20 +71,20 @@ struct LiveRateHeader: View {
     @Binding var preciseTokenCountingEnabled: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("全会话实时速度")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                 Text("\(snapshot.status) · \(snapshot.sourceLabel)")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Picker("显示模式", selection: $tokenDisplayMode) {
                     ForEach(TokenDisplayMode.allCases) { mode in
                         Label(mode.label, systemImage: mode.systemImage)
@@ -92,7 +92,7 @@ struct LiveRateHeader: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 214)
+                .frame(width: 198)
 
                 Menu {
                     ForEach(monitor.threadOptions) { option in
@@ -130,7 +130,7 @@ struct LiveRateHeader: View {
                 .buttonStyle(.bordered)
                 .help("重置实时速率窗口")
             }
-            .padding(6)
+            .padding(5)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(AppTheme.insetBackground)
@@ -143,35 +143,35 @@ struct LiveSelectedThreadRow: View {
     let snapshot: LiveRateSnapshot
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 9) {
             Label("选中会话", systemImage: "sidebar.leading")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 82, alignment: .leading)
+                .frame(width: 74, alignment: .leading)
 
             Text(String(format: "%.1f tok/s", snapshot.rollingTokensPerSecond))
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
-                .frame(width: 86, alignment: .leading)
+                .frame(width: 78, alignment: .leading)
 
             Text("\(snapshot.outputTokens) 综合")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .monospacedDigit()
-                .frame(width: 96, alignment: .leading)
+                .frame(width: 84, alignment: .leading)
 
             Text("\(snapshot.breakdown.modelGenerated) 模型")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .monospacedDigit()
-                .frame(width: 86, alignment: .leading)
+                .frame(width: 74, alignment: .leading)
 
             Text(snapshot.status)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(AppTheme.insetBackground)
@@ -183,13 +183,13 @@ struct LiveBreakdownRow: View {
     let breakdown: LiveTokenBreakdown
 
     private let columns = [
-        GridItem(.flexible(minimum: 82), spacing: 8),
-        GridItem(.flexible(minimum: 82), spacing: 8),
-        GridItem(.flexible(minimum: 82), spacing: 8)
+        GridItem(.flexible(minimum: 76), spacing: 6),
+        GridItem(.flexible(minimum: 76), spacing: 6),
+        GridItem(.flexible(minimum: 76), spacing: 6)
     ]
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
             LiveBreakdownChip(label: "可见", value: breakdown.visibleText)
             LiveBreakdownChip(label: "工具参数", value: breakdown.toolArguments)
             LiveBreakdownChip(label: "编辑输入", value: breakdown.patchInput)
@@ -216,11 +216,11 @@ struct LiveBreakdownChip: View {
                 .monospacedDigit()
                 .foregroundStyle(.primary)
         }
-        .font(.system(size: 11))
+        .font(.system(size: 10))
         .lineLimit(1)
         .minimumScaleFactor(0.72)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -254,16 +254,16 @@ struct LiveRateGauge: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(String(format: "%.1f", value))
-                    .font(.system(size: 32, weight: .semibold, design: .rounded))
+                    .font(.system(size: 29, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text("tokens / second")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
-            .padding(12)
+            .padding(10)
         }
     }
 }
@@ -275,18 +275,18 @@ struct LiveMetricCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(value)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Text(label)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(AppTheme.raisedBackground)
@@ -300,10 +300,10 @@ struct LivePill: View {
 
     var body: some View {
         Label(text, systemImage: systemImage)
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
                 Capsule()
                     .fill(AppTheme.raisedBackground)

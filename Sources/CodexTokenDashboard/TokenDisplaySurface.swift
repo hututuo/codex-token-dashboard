@@ -175,15 +175,15 @@ struct TokenDisplayMetric: View {
 struct TokenGlassBackground: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(AppTheme.panelBackground.opacity(0.94))
+            .fill(AppTheme.panelBackground.opacity(0.88))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.08),
-                                AppTheme.accentCyan.opacity(0.12),
-                                AppTheme.accentBlue.opacity(0.10)
+                                Color.white.opacity(0.06),
+                                AppTheme.accentCyan.opacity(0.10),
+                                AppTheme.accentBlue.opacity(0.08)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -194,7 +194,7 @@ struct TokenGlassBackground: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.20), Color.white.opacity(0.06)],
+                        colors: [Color.white.opacity(0.16), Color.white.opacity(0.045)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
