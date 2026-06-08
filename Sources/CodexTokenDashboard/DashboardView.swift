@@ -90,7 +90,6 @@ struct DashboardView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func updateTokenDisplaySurface() {
@@ -407,18 +406,7 @@ struct TokenHeatmap: View {
         let value = summary.tokens
         guard value > 0 else { return AppTheme.emptyCell }
         let ratio = min(1.0, Double(value) / Double(max(maxTokens, 1)))
-        switch ratio {
-        case 0..<0.18:
-            return Color(red: 0.105, green: 0.180, blue: 0.260)
-        case 0.18..<0.38:
-            return Color(red: 0.120, green: 0.280, blue: 0.430)
-        case 0.38..<0.62:
-            return Color(red: 0.130, green: 0.400, blue: 0.660)
-        case 0.62..<0.82:
-            return Color(red: 0.110, green: 0.520, blue: 0.850)
-        default:
-            return Color(red: 0.180, green: 0.680, blue: 1.000)
-        }
+        return AppTheme.heatmapColor(ratio: ratio)
     }
 
     private func makeSummaries() -> [HeatmapUsageSummary] {
