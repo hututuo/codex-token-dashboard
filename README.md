@@ -10,6 +10,16 @@
 
 A local-first macOS SwiftUI app for visualizing Codex token usage and live output speed from local session logs.
 
+## Community
+
+<p align="center">
+  <img src="Assets/wechat-group-qr.jpeg" alt="WeChat group QR code for HTT repositories" width="260">
+</p>
+
+<p align="center">
+  Scan to join the WeChat group for discussion, product releases, and update notes.
+</p>
+
 <p align="center">
   <img src="Assets/DashboardPreview.png" alt="Codex Token Bar screenshot" width="100%">
 </p>

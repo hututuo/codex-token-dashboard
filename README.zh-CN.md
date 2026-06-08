@@ -10,6 +10,16 @@
 
 Codex Token Bar 是一个本地优先的 macOS SwiftUI 应用，用来从本地会话日志可视化 Codex token 使用量和实时输出速度。
 
+## 交流群
+
+<p align="center">
+  <img src="Assets/wechat-group-qr.jpeg" alt="HTT 的仓库交流群二维码" width="260">
+</p>
+
+<p align="center">
+  欢迎扫码加入群聊，讨论使用问题、互相交流，也会发布产品发布和更新通知。
+</p>
+
 <p align="center">
   <img src="Assets/DashboardPreview.png" alt="Codex Token Bar 主界面截图" width="100%">
 </p>
