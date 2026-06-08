@@ -13,22 +13,12 @@ struct LiveRateView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             LiveRateHeader(
-                snapshot: primarySnapshot,
-                monitor: monitor,
-                tokenDisplayMode: $tokenDisplayMode,
-                preciseTokenCountingEnabled: $preciseTokenCountingEnabled
+                snapshot: primarySnapshot
             )
 
             HStack(alignment: .top, spacing: 10) {
-                ZStack(alignment: .bottomTrailing) {
-                    LiveRateGauge(value: primarySnapshot.rollingTokensPerSecond)
-
-                    if tokenDisplayMode == .floating {
-                        FloatingOpacityControl(opacity: $floatingPanelOpacity)
-                            .padding(5)
-                    }
-                }
-                .frame(width: 132, height: 82)
+                LiveRateGauge(value: primarySnapshot.rollingTokensPerSecond)
+                    .frame(width: 132, height: 82)
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
@@ -54,7 +44,16 @@ struct LiveRateView: View {
                     }
 
                     LiveBreakdownRow(breakdown: primarySnapshot.breakdown)
-                    LiveSelectedThreadRow(snapshot: monitor.snapshot)
+                    HStack(spacing: 8) {
+                        LiveSelectedThreadRow(snapshot: monitor.snapshot)
+                        Spacer(minLength: 8)
+                        LiveRateControls(
+                            monitor: monitor,
+                            tokenDisplayMode: $tokenDisplayMode,
+                            preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
+                            floatingPanelOpacity: $floatingPanelOpacity
+                        )
+                    }
                 }
             }
         }
@@ -74,9 +73,6 @@ struct LiveRateView: View {
 
 struct LiveRateHeader: View {
     let snapshot: LiveRateSnapshot
-    @ObservedObject var monitor: LiveRateMonitor
-    @Binding var tokenDisplayMode: TokenDisplayMode
-    @Binding var preciseTokenCountingEnabled: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -91,59 +87,82 @@ struct LiveRateHeader: View {
                 .truncationMode(.middle)
 
             Spacer(minLength: 6)
+        }
+    }
+}
 
-            HStack(spacing: 5) {
-                Picker("显示模式", selection: $tokenDisplayMode) {
-                    ForEach(TokenDisplayMode.allCases) { mode in
-                        Label(mode.label, systemImage: mode.systemImage)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 176)
+struct LiveRateControls: View {
+    @ObservedObject var monitor: LiveRateMonitor
+    @Binding var tokenDisplayMode: TokenDisplayMode
+    @Binding var preciseTokenCountingEnabled: Bool
+    @Binding var floatingPanelOpacity: Double
 
-                Menu {
-                    ForEach(monitor.threadOptions) { option in
-                        Button {
-                            monitor.selectThread(option.id)
-                        } label: {
-                            if option.id == monitor.selectedThreadID {
-                                Label(option.displayTitle, systemImage: "checkmark")
-                            } else {
-                                Text(option.displayTitle)
-                            }
+    var body: some View {
+        HStack(spacing: 5) {
+            Menu {
+                ForEach(TokenDisplayMode.allCases) { mode in
+                    Button {
+                        tokenDisplayMode = mode
+                    } label: {
+                        if mode == tokenDisplayMode {
+                            Label(mode.label, systemImage: "checkmark")
+                        } else {
+                            Label(mode.label, systemImage: mode.systemImage)
                         }
                     }
-                } label: {
-                    Label("单会话", systemImage: "sidebar.leading")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.bordered)
-                .help("查看单会话")
-
-                Toggle(isOn: $preciseTokenCountingEnabled) {
-                    Label("精准", systemImage: "number")
-                        .labelStyle(.iconOnly)
-                }
-                .toggleStyle(.button)
-                .buttonStyle(.bordered)
-                .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
-
-                Button {
-                    monitor.reset()
-                } label: {
-                    Label("重置", systemImage: "arrow.triangle.2.circlepath")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.bordered)
-                .help("重置实时速率窗口")
+            } label: {
+                Label(tokenDisplayMode.label, systemImage: tokenDisplayMode.systemImage)
+                    .labelStyle(.iconOnly)
             }
-            .padding(4)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(AppTheme.insetBackground)
-            )
+            .buttonStyle(.bordered)
+            .help("显示模式")
+
+            if tokenDisplayMode == .floating {
+                FloatingOpacityControl(opacity: $floatingPanelOpacity)
+            }
+
+            Menu {
+                ForEach(monitor.threadOptions) { option in
+                    Button {
+                        monitor.selectThread(option.id)
+                    } label: {
+                        if option.id == monitor.selectedThreadID {
+                            Label(option.displayTitle, systemImage: "checkmark")
+                        } else {
+                            Text(option.displayTitle)
+                        }
+                    }
+                }
+            } label: {
+                Label("单会话", systemImage: "sidebar.leading")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .help("查看单会话")
+
+            Toggle(isOn: $preciseTokenCountingEnabled) {
+                Label("精准", systemImage: "number")
+                    .labelStyle(.iconOnly)
+            }
+            .toggleStyle(.button)
+            .buttonStyle(.bordered)
+            .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
+
+            Button {
+                monitor.reset()
+            } label: {
+                Label("重置", systemImage: "arrow.triangle.2.circlepath")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .help("重置实时速率窗口")
         }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(AppTheme.insetBackground)
+        )
     }
 }
 
