@@ -152,7 +152,7 @@ struct HeaderView: View {
             }
 
             VStack(spacing: 7) {
-                Text("Codex Token Dashboard")
+                Text("Codex Token Bar")
                     .font(.system(size: 28, weight: .regular))
                     .foregroundStyle(.primary)
 

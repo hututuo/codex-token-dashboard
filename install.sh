@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="hututuo/codex-token-dashboard"
-APP_NAME="Codex Token Dashboard.app"
-ASSET_NAME="CodexTokenDashboard.app.zip"
+REPO="hututuo/codex-token-bar"
+APP_NAME="Codex Token Bar.app"
+ASSET_NAME="CodexTokenBar.app.zip"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "Codex Token Dashboard is a macOS app. This installer only supports macOS." >&2
+  echo "Codex Token Bar is a macOS app. This installer only supports macOS." >&2
   exit 1
 fi
 
@@ -17,7 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Downloading Codex Token Dashboard..."
+echo "Downloading Codex Token Bar..."
 curl -fL --progress-bar "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET_NAME"
 
 echo "Unpacking..."
@@ -29,7 +29,10 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-if [[ -n "${CODEX_TOKEN_DASHBOARD_INSTALL_DIR:-}" ]]; then
+if [[ -n "${CODEX_TOKEN_BAR_INSTALL_DIR:-}" ]]; then
+  INSTALL_DIR="$CODEX_TOKEN_BAR_INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR"
+elif [[ -n "${CODEX_TOKEN_DASHBOARD_INSTALL_DIR:-}" ]]; then
   INSTALL_DIR="$CODEX_TOKEN_DASHBOARD_INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
 elif [[ -d "/Applications" && -w "/Applications" ]]; then
@@ -51,8 +54,9 @@ fi
 
 echo
 echo "Installed: $TARGET"
-if [[ "${CODEX_TOKEN_DASHBOARD_NO_OPEN:-0}" != "1" ]]; then
-  echo "Opening Codex Token Dashboard..."
+NO_OPEN="${CODEX_TOKEN_BAR_NO_OPEN:-${CODEX_TOKEN_DASHBOARD_NO_OPEN:-0}}"
+if [[ "$NO_OPEN" != "1" ]]; then
+  echo "Opening Codex Token Bar..."
   open "$TARGET"
 fi
 echo

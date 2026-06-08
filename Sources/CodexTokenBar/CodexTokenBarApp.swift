@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct CodexTokenDashboardApp: App {
+struct CodexTokenBarApp: App {
     var body: some Scene {
         WindowGroup {
             DashboardView()

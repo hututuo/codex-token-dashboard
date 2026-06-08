@@ -1074,14 +1074,14 @@ private extension LiveRateMonitor {
             if let database {
                 sqlite3_close(database)
             }
-            throw NSError(domain: "CodexTokenDashboard", code: Int(openStatus), userInfo: [NSLocalizedDescriptionKey: message])
+            throw NSError(domain: "CodexTokenBar", code: Int(openStatus), userInfo: [NSLocalizedDescriptionKey: message])
         }
         defer { sqlite3_close(database) }
 
         var statement: OpaquePointer?
         let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
         guard prepareStatus == SQLITE_OK, let statement else {
-            throw NSError(domain: "CodexTokenDashboard", code: Int(prepareStatus), userInfo: [NSLocalizedDescriptionKey: sqliteErrorMessage(database)])
+            throw NSError(domain: "CodexTokenBar", code: Int(prepareStatus), userInfo: [NSLocalizedDescriptionKey: sqliteErrorMessage(database)])
         }
         defer { sqlite3_finalize(statement) }
 
@@ -1093,7 +1093,7 @@ private extension LiveRateMonitor {
             } else if stepStatus == SQLITE_DONE {
                 return rows
             } else {
-                throw NSError(domain: "CodexTokenDashboard", code: Int(stepStatus), userInfo: [NSLocalizedDescriptionKey: sqliteErrorMessage(database)])
+                throw NSError(domain: "CodexTokenBar", code: Int(stepStatus), userInfo: [NSLocalizedDescriptionKey: sqliteErrorMessage(database)])
             }
         }
     }
@@ -1253,7 +1253,7 @@ private extension LiveRateMonitor {
 
         guard process.terminationStatus == 0 else {
             let message = String(data: errorData, encoding: .utf8) ?? "sqlite3 failed"
-            throw NSError(domain: "CodexTokenDashboard", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
+            throw NSError(domain: "CodexTokenBar", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
         }
 
         if data.isEmpty {

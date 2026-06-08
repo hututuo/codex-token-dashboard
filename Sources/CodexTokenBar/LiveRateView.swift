@@ -46,12 +46,11 @@ struct LiveRateView: View {
                         }
 
                         LiveBreakdownRow(breakdown: primarySnapshot.breakdown)
-                        LiveSelectedThreadRow(snapshot: monitor.snapshot)
+                        LiveSelectedThreadRow(monitor: monitor)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     LiveRateControls(
-                        monitor: monitor,
                         tokenDisplayMode: $tokenDisplayMode,
                         preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
                         floatingPanelOpacity: $floatingPanelOpacity
@@ -103,7 +102,6 @@ struct LiveRateHeader: View {
 }
 
 struct LiveRateControls: View {
-    @ObservedObject var monitor: LiveRateMonitor
     @Binding var tokenDisplayMode: TokenDisplayMode
     @Binding var preciseTokenCountingEnabled: Bool
     @Binding var floatingPanelOpacity: Double
@@ -115,46 +113,27 @@ struct LiveRateControls: View {
                     ForEach(TokenDisplayMode.allCases) { mode in
                         Button {
                             tokenDisplayMode = mode
-                    } label: {
-                        if mode == tokenDisplayMode {
-                            Label(mode.controlLabel, systemImage: "checkmark")
-                        } else {
-                            Label(mode.controlLabel, systemImage: mode.systemImage)
-                        }
-                    }
-                }
-            } label: {
-                    Label("显示：\(tokenDisplayMode.controlLabel)", systemImage: tokenDisplayMode.systemImage)
-                }
-                .buttonStyle(.bordered)
-                .frame(width: 126)
-                .help("显示模式")
-
-                Menu {
-                    ForEach(monitor.threadOptions) { option in
-                        Button {
-                            monitor.selectThread(option.id)
                         } label: {
-                            if option.id == monitor.selectedThreadID {
-                                Label(option.displayTitle, systemImage: "checkmark")
+                            if mode == tokenDisplayMode {
+                                Label(mode.controlLabel, systemImage: "checkmark")
                             } else {
-                                Text(option.displayTitle)
+                                Label(mode.controlLabel, systemImage: mode.systemImage)
                             }
                         }
                     }
                 } label: {
-                    Label("查看单会话", systemImage: "sidebar.leading")
+                    Label("显示：\(tokenDisplayMode.controlLabel)", systemImage: tokenDisplayMode.systemImage)
                 }
                 .buttonStyle(.bordered)
-                .frame(width: 126)
-                .help("查看单会话")
+                .frame(width: 154)
+                .help("显示模式")
 
                 Toggle(isOn: $preciseTokenCountingEnabled) {
                     Label("精准 token 统计", systemImage: "number")
                 }
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
-                .frame(width: 134)
+                .frame(width: 154)
                 .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
             }
 
@@ -166,7 +145,7 @@ struct LiveRateControls: View {
         .font(.system(size: 11, weight: .medium))
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(width: 438, alignment: .topLeading)
+        .frame(width: 342, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(AppTheme.insetBackground)
@@ -182,9 +161,9 @@ struct FloatingOpacityControl: View {
             Label("悬浮窗透明度", systemImage: "circle.lefthalf.filled")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 88, alignment: .leading)
+                .frame(width: 82, alignment: .leading)
             Slider(value: $opacity, in: 0.45...0.98, step: 0.01)
-                .frame(width: 262)
+                .frame(width: 166)
             Text("\(Int((opacity * 100).rounded()))%")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -197,20 +176,50 @@ struct FloatingOpacityControl: View {
             Capsule()
                 .fill(AppTheme.raisedBackground.opacity(0.72))
         )
-        .frame(width: 414)
+        .frame(width: 318)
         .help("悬浮窗透明度")
     }
 }
 
 struct LiveSelectedThreadRow: View {
-    let snapshot: LiveRateSnapshot
+    @ObservedObject var monitor: LiveRateMonitor
+
+    private var snapshot: LiveRateSnapshot {
+        monitor.snapshot
+    }
 
     var body: some View {
         HStack(spacing: 7) {
-            Label("选中会话", systemImage: "sidebar.leading")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
+            Menu {
+                ForEach(monitor.threadOptions) { option in
+                    Button {
+                        monitor.selectThread(option.id)
+                    } label: {
+                        if option.id == monitor.selectedThreadID {
+                            Label(option.displayTitle, systemImage: "checkmark")
+                        } else {
+                            Text(option.displayTitle)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "sidebar.leading")
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("选中会话")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text(snapshot.threadTitle)
+                            .font(.system(size: 10, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .frame(width: 170, alignment: .leading)
+            .help("选择要查看的单会话")
 
             Text(String(format: "%.1f tok/s", snapshot.rollingTokensPerSecond))
                 .font(.system(size: 11, weight: .semibold))

@@ -24,7 +24,7 @@ enum Exporter {
     static func exportPNG(snapshot: DashboardSnapshot) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "codex-token-dashboard.png"
+        panel.nameFieldStringValue = "codex-token-bar.png"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         let view = ExportSnapshotView(snapshot: snapshot)

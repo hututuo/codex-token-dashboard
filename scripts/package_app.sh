@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="Codex Token Dashboard"
-PRODUCT_NAME="CodexTokenDashboard"
+APP_NAME="Codex Token Bar"
+PRODUCT_NAME="CodexTokenBar"
 CONFIGURATION="${1:-debug}"
 APP_VERSION="${APP_VERSION:-0.2.0}"
 
@@ -35,15 +35,15 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>CodexTokenDashboard</string>
+  <string>CodexTokenBar</string>
   <key>CFBundleIdentifier</key>
-  <string>local.codex.token-dashboard</string>
+  <string>local.codex.token-bar</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Codex Token Dashboard</string>
+  <string>Codex Token Bar</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

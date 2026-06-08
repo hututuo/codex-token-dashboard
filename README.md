@@ -1,13 +1,13 @@
-# Codex Token Dashboard
+# Codex Token Bar
 
 <p align="center">
-  <img src="Assets/AppIcon.png" width="128" alt="Codex Token Dashboard app icon">
+  <img src="Assets/AppIcon.png" width="128" alt="Codex Token Bar app icon">
 </p>
 
-A local-first macOS SwiftUI app for visualizing Codex token usage from local session logs.
+A local-first macOS SwiftUI app for visualizing Codex token usage and live output speed from local session logs.
 
 <p align="center">
-  <img src="Assets/DashboardPreview.png" alt="Codex Token Dashboard screenshot" width="100%">
+  <img src="Assets/DashboardPreview.png" alt="Codex Token Bar screenshot" width="100%">
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@ A local-first macOS SwiftUI app for visualizing Codex token usage from local ses
 Recommended one-line install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-dashboard/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
 ```
 
 The installer downloads the latest `.app.zip` release, unpacks it, installs the app into `/Applications` when writable or `~/Applications` otherwise, removes the common `com.apple.quarantine` flag, and opens the app.
@@ -31,7 +31,7 @@ This helps avoid the common macOS "app is damaged and can't be opened" message c
 Use the same one-line command to update. It always downloads the latest GitHub release and replaces the existing app:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-dashboard/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
 ```
 
 ## What It Does
@@ -53,6 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-dashboard/main/
 
 ### v0.2.0
 
+- Renamed the app and repository to Codex Token Bar.
 - Added all-session live token-rate monitoring from local Codex stream logs.
 - Added a compact floating live-rate panel for always-visible tok/s, total usage, daily usage, and request count.
 - Added single-session drill-down, precise token-counting toggle, floating-panel opacity control, and a status-bar display placeholder.
@@ -83,7 +84,7 @@ For contributors who want to run from source:
 brew install git-lfs
 git lfs install
 scripts/prepare_tiktoken_lfs.sh
-swift run CodexTokenDashboard
+swift run CodexTokenBar
 ```
 
 `git-lfs` is needed because the exact `o200k_base` tokenizer uses a binary Swift FFI package. The prepare script fetches only the macOS binary slice needed for this app. If the tokenizer cannot load at runtime, the app falls back to a lightweight calibrated estimator.
@@ -95,7 +96,7 @@ brew install git-lfs
 git lfs install
 chmod +x scripts/package_app.sh
 scripts/package_app.sh debug
-open "dist/Codex Token Dashboard.app"
+open "dist/Codex Token Bar.app"
 ```
 
 ## Notes

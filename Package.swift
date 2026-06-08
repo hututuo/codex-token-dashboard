@@ -3,21 +3,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "CodexTokenDashboard",
+    name: "CodexTokenBar",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "CodexTokenDashboard", targets: ["CodexTokenDashboard"])
+        .executable(name: "CodexTokenBar", targets: ["CodexTokenBar"])
     ],
     dependencies: [
         .package(url: "https://github.com/narner/TiktokenSwift.git", from: "1.0.0")
     ],
     targets: [
         .executableTarget(
-            name: "CodexTokenDashboard",
+            name: "CodexTokenBar",
             dependencies: ["TiktokenSwift"],
-            path: "Sources/CodexTokenDashboard"
+            path: "Sources/CodexTokenBar"
         )
     ]
 )

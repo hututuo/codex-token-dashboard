@@ -59,7 +59,8 @@ struct CodexDataSource: Equatable {
 
 final class CodexDataSourceResolver {
     private let fileManager = FileManager.default
-    private let selectedPathKey = "CodexTokenDashboard.selectedCodexHome"
+    private let selectedPathKey = "CodexTokenBar.selectedCodexHome"
+    private let legacySelectedPathKey = "CodexTokenDashboard.selectedCodexHome"
 
     func resolve() -> CodexDataSource? {
         if let selected = selectedDataSource(), isUsable(selected) {
@@ -78,15 +79,20 @@ final class CodexDataSourceResolver {
     func saveSelectedDirectory(_ directory: URL) -> CodexDataSource? {
         let normalized = normalize(directory)
         UserDefaults.standard.set(normalized.path, forKey: selectedPathKey)
+        UserDefaults.standard.removeObject(forKey: legacySelectedPathKey)
         return selectedDataSource()
     }
 
     func selectedDataSource() -> CodexDataSource? {
-        guard let path = UserDefaults.standard.string(forKey: selectedPathKey),
-              !path.isEmpty else {
+        let currentPath = UserDefaults.standard.string(forKey: selectedPathKey)
+        let legacyPath = UserDefaults.standard.string(forKey: legacySelectedPathKey)
+        guard let path = [currentPath, legacyPath].compactMap({ $0 }).first(where: { !$0.isEmpty }) else {
             return nil
         }
 
+        if currentPath == nil {
+            UserDefaults.standard.set(path, forKey: selectedPathKey)
+        }
         return CodexDataSource(codexHome: normalize(URL(fileURLWithPath: path)), origin: .userSelected)
     }
 

@@ -55,7 +55,7 @@ final class CodexUsageAnalyzer {
     private func loadFromTokenCountJSONL() throws -> DashboardSnapshot {
         let sessionsRoot = dataSource.sessionsRoot
         guard fileManager.fileExists(atPath: sessionsRoot.path) else {
-            throw NSError(domain: "CodexTokenDashboard", code: 5, userInfo: [NSLocalizedDescriptionKey: "\(dataSource.displayPath)/sessions not found"])
+            throw NSError(domain: "CodexTokenBar", code: 5, userInfo: [NSLocalizedDescriptionKey: "\(dataSource.displayPath)/sessions not found"])
         }
 
         var events: [TokenEvent] = []
@@ -72,7 +72,7 @@ final class CodexUsageAnalyzer {
         }
 
         guard !events.isEmpty else {
-            throw NSError(domain: "CodexTokenDashboard", code: 6, userInfo: [NSLocalizedDescriptionKey: "No token_count events found in \(dataSource.displayPath)/sessions"])
+            throw NSError(domain: "CodexTokenBar", code: 6, userInfo: [NSLocalizedDescriptionKey: "No token_count events found in \(dataSource.displayPath)/sessions"])
         }
 
         let daily = dailyUsage(from: events)
@@ -103,7 +103,7 @@ final class CodexUsageAnalyzer {
     private func loadFromStateSQLite() throws -> DashboardSnapshot {
         let db = dataSource.stateDatabase.path
         guard fileManager.fileExists(atPath: db) else {
-            throw NSError(domain: "CodexTokenDashboard", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(dataSource.displayPath)/state_5.sqlite not found"])
+            throw NSError(domain: "CodexTokenBar", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(dataSource.displayPath)/state_5.sqlite not found"])
         }
 
         let dayRows = try sqliteRows(
@@ -153,7 +153,7 @@ final class CodexUsageAnalyzer {
 
         let today = calendar.startOfDay(for: Date())
         guard let startDay = calendar.date(byAdding: .day, value: -364, to: today) else {
-            throw NSError(domain: "CodexTokenDashboard", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to calculate date range"])
+            throw NSError(domain: "CodexTokenBar", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to calculate date range"])
         }
 
         var dailyMap: [Date: (tokens: Int, calls: Int)] = [:]
@@ -177,7 +177,7 @@ final class CodexUsageAnalyzer {
 
         let now = Date()
         guard let recentStart = calendar.date(byAdding: .hour, value: -24, to: now) else {
-            throw NSError(domain: "CodexTokenDashboard", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to calculate recent range"])
+            throw NSError(domain: "CodexTokenBar", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to calculate recent range"])
         }
         let interval: TimeInterval = 30 * 60
         var binMap: [Int: (tokens: Int, calls: Int)] = [:]
@@ -255,7 +255,7 @@ final class CodexUsageAnalyzer {
 
         guard process.terminationStatus == 0 else {
             let message = String(data: errorData, encoding: .utf8) ?? "sqlite3 failed"
-            throw NSError(domain: "CodexTokenDashboard", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
+            throw NSError(domain: "CodexTokenBar", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
         }
 
         let text = String(data: data, encoding: .utf8) ?? ""
