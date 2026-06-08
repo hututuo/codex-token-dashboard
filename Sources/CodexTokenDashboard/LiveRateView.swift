@@ -10,61 +10,19 @@ struct LiveRateView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("全会话实时速度")
-                    .font(.system(size: 19, weight: .semibold))
-                Spacer()
+        VStack(alignment: .leading, spacing: 16) {
+            LiveRateHeader(
+                snapshot: primarySnapshot,
+                monitor: monitor,
+                tokenDisplayMode: $tokenDisplayMode,
+                preciseTokenCountingEnabled: $preciseTokenCountingEnabled
+            )
 
-                Picker("显示模式", selection: $tokenDisplayMode) {
-                    ForEach(TokenDisplayMode.allCases) { mode in
-                        Label(mode.label, systemImage: mode.systemImage)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 238)
-
-                Menu {
-                    ForEach(monitor.threadOptions) { option in
-                        Button {
-                            monitor.selectThread(option.id)
-                        } label: {
-                            if option.id == monitor.selectedThreadID {
-                                Label(option.displayTitle, systemImage: "checkmark")
-                            } else {
-                                Text(option.displayTitle)
-                            }
-                        }
-                    }
-                } label: {
-                    Label("查看单会话", systemImage: "sidebar.leading")
-                }
-                .buttonStyle(.bordered)
-                .font(.system(size: 13, weight: .medium))
-
-                Toggle(isOn: $preciseTokenCountingEnabled) {
-                    Label("精准", systemImage: "number")
-                }
-                .toggleStyle(.button)
-                .buttonStyle(.bordered)
-                .font(.system(size: 13, weight: .medium))
-                .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
-
-                Button {
-                    monitor.reset()
-                } label: {
-                    Label("重置", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .buttonStyle(.bordered)
-                .font(.system(size: 13, weight: .medium))
-            }
-
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .top, spacing: 16) {
                 LiveRateGauge(value: primarySnapshot.rollingTokensPerSecond)
-                    .frame(width: 154, height: 92)
+                    .frame(width: 178, height: 128)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
                         LiveMetricCell(
                             value: String(format: "%.1f", primarySnapshot.rollingTokensPerSecond),
@@ -84,25 +42,12 @@ struct LiveRateView: View {
                         LivePill(systemImage: "sum", text: primarySnapshot.scopeLabel)
                         LivePill(systemImage: "point.3.connected.trianglepath.dotted", text: primarySnapshot.interfaceLabel)
                         LivePill(systemImage: tokenDisplayMode.systemImage, text: tokenDisplayMode.label)
+                        Spacer(minLength: 0)
                     }
 
                     LiveBreakdownRow(breakdown: primarySnapshot.breakdown)
-
                     LiveSelectedThreadRow(snapshot: monitor.snapshot)
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("全会话输出汇总")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Text("\(primarySnapshot.status) · \(primarySnapshot.sourceLabel)")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
         }
         .padding(18)
@@ -119,11 +64,86 @@ struct LiveRateView: View {
     }
 }
 
+struct LiveRateHeader: View {
+    let snapshot: LiveRateSnapshot
+    @ObservedObject var monitor: LiveRateMonitor
+    @Binding var tokenDisplayMode: TokenDisplayMode
+    @Binding var preciseTokenCountingEnabled: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("全会话实时速度")
+                    .font(.system(size: 20, weight: .semibold))
+                Text("\(snapshot.status) · \(snapshot.sourceLabel)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 8) {
+                Picker("显示模式", selection: $tokenDisplayMode) {
+                    ForEach(TokenDisplayMode.allCases) { mode in
+                        Label(mode.label, systemImage: mode.systemImage)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 214)
+
+                Menu {
+                    ForEach(monitor.threadOptions) { option in
+                        Button {
+                            monitor.selectThread(option.id)
+                        } label: {
+                            if option.id == monitor.selectedThreadID {
+                                Label(option.displayTitle, systemImage: "checkmark")
+                            } else {
+                                Text(option.displayTitle)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("单会话", systemImage: "sidebar.leading")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("查看单会话")
+
+                Toggle(isOn: $preciseTokenCountingEnabled) {
+                    Label("精准", systemImage: "number")
+                        .labelStyle(.iconOnly)
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
+
+                Button {
+                    monitor.reset()
+                } label: {
+                    Label("重置", systemImage: "arrow.triangle.2.circlepath")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("重置实时速率窗口")
+            }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppTheme.insetBackground)
+            )
+        }
+    }
+}
+
 struct LiveSelectedThreadRow: View {
     let snapshot: LiveRateSnapshot
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Label("选中会话", systemImage: "sidebar.leading")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -162,8 +182,14 @@ struct LiveSelectedThreadRow: View {
 struct LiveBreakdownRow: View {
     let breakdown: LiveTokenBreakdown
 
+    private let columns = [
+        GridItem(.flexible(minimum: 82), spacing: 8),
+        GridItem(.flexible(minimum: 82), spacing: 8),
+        GridItem(.flexible(minimum: 82), spacing: 8)
+    ]
+
     var body: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             LiveBreakdownChip(label: "可见", value: breakdown.visibleText)
             LiveBreakdownChip(label: "工具参数", value: breakdown.toolArguments)
             LiveBreakdownChip(label: "编辑输入", value: breakdown.patchInput)
@@ -174,7 +200,6 @@ struct LiveBreakdownRow: View {
                 LiveBreakdownChip(label: "精确输出", value: breakdown.exactModelOutput)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -196,6 +221,7 @@ struct LiveBreakdownChip: View {
         .minimumScaleFactor(0.72)
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(AppTheme.raisedBackground)
@@ -258,7 +284,7 @@ struct LiveMetricCell: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .frame(width: 112, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
