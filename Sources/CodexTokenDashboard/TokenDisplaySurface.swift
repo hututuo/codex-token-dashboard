@@ -103,9 +103,10 @@ struct TokenDisplayCard: View {
 struct TokenDisplayRateBar: View {
     let rate: Double
     let onClose: (() -> Void)?
+    private let fullScale = 250.0
 
     private var fillFraction: CGFloat {
-        CGFloat(min(max(rate, 0), 120) / 120)
+        CGFloat(min(max(rate, 0), fullScale) / fullScale)
     }
 
     var body: some View {
@@ -173,9 +174,11 @@ struct TokenDisplayMetric: View {
 }
 
 struct TokenGlassBackground: View {
+    var opacity = 0.88
+
     var body: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(AppTheme.panelBackground.opacity(0.88))
+            .fill(AppTheme.panelBackground.opacity(opacity))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(

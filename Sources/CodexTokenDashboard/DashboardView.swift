@@ -8,6 +8,7 @@ struct DashboardView: View {
     @StateObject private var statusBarPanel = StatusBarTokenController()
     @AppStorage("tokenDisplayMode") private var tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
     @AppStorage("preciseTokenCountingEnabled") private var preciseTokenCountingEnabled = false
+    @AppStorage("floatingPanelOpacity") private var floatingPanelOpacity = 0.88
 
     private var tokenDisplayMode: Binding<TokenDisplayMode> {
         Binding {
@@ -39,7 +40,8 @@ struct DashboardView: View {
                     LiveRateView(
                         monitor: liveMonitor,
                         tokenDisplayMode: tokenDisplayMode,
-                        preciseTokenCountingEnabled: $preciseTokenCountingEnabled
+                        preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
+                        floatingPanelOpacity: $floatingPanelOpacity
                     )
 
                     ActivitySection(

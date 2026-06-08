@@ -79,11 +79,12 @@ final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDe
 struct FloatingTokenPanelView: View {
     @ObservedObject var store: CodexUsageStore
     @ObservedObject var monitor: LiveRateMonitor
+    @AppStorage("floatingPanelOpacity") private var floatingPanelOpacity = 0.88
     let onClose: () -> Void
 
     var body: some View {
         ZStack {
-            TokenGlassBackground()
+            TokenGlassBackground(opacity: floatingPanelOpacity)
             TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor), onClose: onClose)
                 .padding(.leading, 12)
                 .padding(.trailing, 4)
