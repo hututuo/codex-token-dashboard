@@ -47,6 +47,30 @@ curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/instal
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
 ```
 
+## 可选：Codex Desktop 侧边栏补丁
+
+部分 Codex Desktop 版本会只从全局最近会话第一页生成项目侧边栏。如果某个 workspace 的很多本地会话不在第一页里，侧边栏就可能只显示几条对话，但本地数据库其实还在。
+
+Codex Token Bar 附带一个可选的本机热补丁脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- install
+```
+
+查看补丁状态：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- status
+```
+
+回滚到最近一次备份：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- rollback
+```
+
+脚本会把原始 `app.asar` 和原始签名备份到 `~/Library/Application Support/CodexTokenBar/codex-desktop-sidebar-patch/backups/`，然后本地改写 Codex Desktop renderer bundle，重新 ad-hoc 签名 `Codex.app` 并重新打开。它不会修改 `~/.codex` 数据。后续官方 Codex 更新可能会覆盖这个补丁。
+
 ## 功能
 
 - 自动发现本地 Codex 数据目录：已保存目录、`CODEX_HOME`、`~/.codex`、`~/.config/codex`，以及用户主目录下的一层候选目录。
@@ -101,8 +125,9 @@ brew install git-lfs
 git lfs install
 chmod +x scripts/package_app.sh
 scripts/package_app.sh debug
-open "dist/Codex Token Bar.app"
 ```
+
+Debug 打包会自动退出上一版本地调试 App，并打开刚生成的新 App。只想打包不打开时，可加 `CODEX_TOKEN_BAR_NO_OPEN=1`。
 
 ## 说明
 

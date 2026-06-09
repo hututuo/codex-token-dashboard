@@ -59,3 +59,19 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 PLIST
 
 echo "$APP_DIR"
+
+if [[ "$CONFIGURATION" == "debug" && "${CODEX_TOKEN_BAR_NO_OPEN:-0}" != "1" ]]; then
+  /usr/bin/osascript -e 'tell application id "local.codex.token-bar" to quit' >/dev/null 2>&1 || true
+  /usr/bin/pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
+  /usr/bin/pkill -x "CodexTokenDashboard" >/dev/null 2>&1 || true
+
+  for _ in {1..20}; do
+    if ! /usr/bin/pgrep -x "$PRODUCT_NAME" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  /usr/bin/open "$APP_DIR"
+  echo "Opened $APP_DIR"
+fi

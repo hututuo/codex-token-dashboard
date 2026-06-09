@@ -47,6 +47,30 @@ Use the same one-line command to update. It always downloads the latest GitHub r
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
 ```
 
+## Optional Codex Desktop Sidebar Patch
+
+Some Codex Desktop builds load the project sidebar from only the first global recent-conversation page. If a workspace has many older local conversations outside that first page, the sidebar can show only a few conversations even though the local database still contains them.
+
+Codex Token Bar includes an optional local hot patch for the installed Codex Desktop app:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- install
+```
+
+Check patch status:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- status
+```
+
+Rollback to the latest backup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- rollback
+```
+
+The patch backs up `app.asar` and the original code signature under `~/Library/Application Support/CodexTokenBar/codex-desktop-sidebar-patch/backups/`, rewrites the Desktop renderer bundle locally, ad-hoc re-signs `Codex.app`, then reopens Codex. It does not modify `~/.codex` data. Future official Codex updates may overwrite the patch.
+
 ## What It Does
 
 - Auto-detects local Codex data from a saved directory, `CODEX_HOME`, `~/.codex`, `~/.config/codex`, or one-level home-directory candidates.
@@ -101,8 +125,9 @@ brew install git-lfs
 git lfs install
 chmod +x scripts/package_app.sh
 scripts/package_app.sh debug
-open "dist/Codex Token Bar.app"
 ```
+
+Debug packaging automatically quits the previous local debug app and opens the newly built app. Set `CODEX_TOKEN_BAR_NO_OPEN=1` if you only want to package it.
 
 ## Notes
 
