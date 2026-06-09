@@ -34,7 +34,7 @@ struct PluginUsage: Identifiable {
 struct DashboardStats {
     let totalTokens: Int
     let peakDayTokens: Int
-    let longestTaskSeconds: Int
+    let peakThreadTokens: Int
     let currentStreakDays: Int
     let longestStreakDays: Int
     let totalCalls: Int

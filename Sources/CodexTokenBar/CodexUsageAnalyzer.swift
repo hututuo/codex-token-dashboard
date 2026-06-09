@@ -8,10 +8,35 @@ final class CodexUsageAnalyzer {
     }
 
     private final class SessionEventCache: @unchecked Sendable {
+        private struct PersistentCache: Codable {
+            let version: Int
+            let entries: [PersistentEntry]
+        }
+
+        private struct PersistentEntry: Codable {
+            let path: String
+            let size: UInt64
+            let modifiedAt: TimeInterval
+            let events: [PersistentEvent]
+        }
+
+        private struct PersistentEvent: Codable {
+            let timestamp: TimeInterval
+            let sessionID: String
+            let tokens: Int
+            let inputTokens: Int
+            let cachedInputTokens: Int
+            let outputTokens: Int
+            let reasoningOutputTokens: Int
+        }
+
         private let lock = NSLock()
         private var storage: [String: (key: SessionCacheKey, events: [TokenEvent])] = [:]
+        private var didLoadPersistentCache = false
+        private var isDirty = false
 
         func events(for path: String, key: SessionCacheKey) -> [TokenEvent]? {
+            loadPersistentCacheIfNeeded()
             lock.lock()
             defer { lock.unlock() }
             guard storage[path]?.key == key else { return nil }
@@ -19,13 +44,110 @@ final class CodexUsageAnalyzer {
         }
 
         func store(_ events: [TokenEvent], for path: String, key: SessionCacheKey) {
+            loadPersistentCacheIfNeeded()
             lock.lock()
             storage[path] = (key, events)
+            isDirty = true
             lock.unlock()
+        }
+
+        func flushPersistentCache() {
+            lock.lock()
+            guard isDirty else {
+                lock.unlock()
+                return
+            }
+            let entries = storage.map { path, value in
+                PersistentEntry(
+                    path: path,
+                    size: value.key.size,
+                    modifiedAt: value.key.modifiedAt,
+                    events: value.events.map { event in
+                        PersistentEvent(
+                            timestamp: event.timestamp.timeIntervalSince1970,
+                            sessionID: event.sessionID,
+                            tokens: event.tokens,
+                            inputTokens: event.inputTokens,
+                            cachedInputTokens: event.cachedInputTokens,
+                            outputTokens: event.outputTokens,
+                            reasoningOutputTokens: event.reasoningOutputTokens
+                        )
+                    }
+                )
+            }
+            isDirty = false
+            lock.unlock()
+
+            guard let cacheURL = Self.cacheURL else { return }
+            do {
+                try FileManager.default.createDirectory(
+                    at: cacheURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                let cache = PersistentCache(version: 1, entries: entries)
+                let data = try JSONEncoder().encode(cache)
+                try data.write(to: cacheURL, options: [.atomic])
+            } catch {
+                // The in-memory cache is still valid; a disk-cache miss should never block the dashboard.
+            }
+        }
+
+        private func loadPersistentCacheIfNeeded() {
+            lock.lock()
+            if didLoadPersistentCache {
+                lock.unlock()
+                return
+            }
+            didLoadPersistentCache = true
+            lock.unlock()
+
+            guard let cacheURL = Self.cacheURL,
+                  let data = try? Data(contentsOf: cacheURL),
+                  let cache = try? JSONDecoder().decode(PersistentCache.self, from: data),
+                  cache.version == 1 else {
+                return
+            }
+
+            var loaded: [String: (key: SessionCacheKey, events: [TokenEvent])] = [:]
+            for entry in cache.entries {
+                let key = SessionCacheKey(path: entry.path, size: entry.size, modifiedAt: entry.modifiedAt)
+                loaded[entry.path] = (
+                    key,
+                    entry.events.map { event in
+                        TokenEvent(
+                            timestamp: Date(timeIntervalSince1970: event.timestamp),
+                            sessionID: event.sessionID,
+                            tokens: event.tokens,
+                            inputTokens: event.inputTokens,
+                            cachedInputTokens: event.cachedInputTokens,
+                            outputTokens: event.outputTokens,
+                            reasoningOutputTokens: event.reasoningOutputTokens
+                        )
+                    }
+                )
+            }
+
+            lock.lock()
+            for (path, value) in loaded where storage[path] == nil {
+                storage[path] = value
+            }
+            lock.unlock()
+        }
+
+        private static var cacheURL: URL? {
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("CodexTokenBar", isDirectory: true)
+                .appendingPathComponent("session-token-events-v1.json")
         }
     }
 
     private static let sessionEventCache = SessionEventCache()
+
+    private struct OfficialThreadSummary {
+        let totalTokens: Int
+        let peakThreadTokens: Int
+        let totalThreads: Int
+    }
 
     private let fileManager = FileManager.default
     private let calendar = Calendar.current
@@ -70,6 +192,7 @@ final class CodexUsageAnalyzer {
                 events.append(contentsOf: sessionEvents)
             }
         }
+        Self.sessionEventCache.flushPersistentCache()
 
         guard !events.isEmpty else {
             throw NSError(domain: "CodexTokenBar", code: 6, userInfo: [NSLocalizedDescriptionKey: "No token_count events found in \(dataSource.displayPath)/sessions"])
@@ -77,14 +200,15 @@ final class CodexUsageAnalyzer {
 
         let daily = dailyUsage(from: events)
         let recentBins = recentBins(from: events)
+        let officialSummary = loadOfficialThreadSummary()
         let stats = DashboardStats(
-            totalTokens: events.reduce(0) { $0 + $1.tokens },
+            totalTokens: officialSummary?.totalTokens ?? events.reduce(0) { $0 + $1.tokens },
             peakDayTokens: daily.map(\.tokens).max() ?? 0,
-            longestTaskSeconds: longestSessionSeconds(from: events),
+            peakThreadTokens: officialSummary?.peakThreadTokens ?? peakSessionTokens(from: events),
             currentStreakDays: currentStreakDays(from: daily),
             longestStreakDays: longestStreakDays(from: daily),
             totalCalls: events.count,
-            totalThreads: sessionIDsWithEvents.count,
+            totalThreads: officialSummary?.totalThreads ?? sessionIDsWithEvents.count,
             fastModePercent: 14,
             mostUsedReasoning: metadata.reasoning,
             skillsExplored: metadata.plugins.filter { $0.name.hasPrefix("$") }.count,
@@ -218,7 +342,7 @@ final class CodexUsageAnalyzer {
         let stats = DashboardStats(
             totalTokens: totalTokens,
             peakDayTokens: peakDay,
-            longestTaskSeconds: longestTaskSeconds(from: daily),
+            peakThreadTokens: Int(summaryRows.first?[safe: 1] ?? "0") ?? 0,
             currentStreakDays: currentStreakDays(from: daily),
             longestStreakDays: longestStreakDays(from: daily),
             totalCalls: recentBins.reduce(0) { $0 + $1.calls },
@@ -235,6 +359,28 @@ final class CodexUsageAnalyzer {
             recentBins: recentBins,
             pluginUsage: Array(plugins),
             generatedAt: Date()
+        )
+    }
+
+    private func loadOfficialThreadSummary() -> OfficialThreadSummary? {
+        let db = dataSource.stateDatabase.path
+        guard fileManager.fileExists(atPath: db),
+              let row = try? sqliteRows(
+                db: db,
+                sql: """
+                SELECT SUM(tokens_used) AS total_tokens,
+                       MAX(tokens_used) AS peak_thread_tokens,
+                       COUNT(*) AS total_threads
+                FROM threads;
+                """
+              ).first else {
+            return nil
+        }
+
+        return OfficialThreadSummary(
+            totalTokens: Int(row[safe: 0] ?? "0") ?? 0,
+            peakThreadTokens: Int(row[safe: 1] ?? "0") ?? 0,
+            totalThreads: Int(row[safe: 2] ?? "0") ?? 0
         )
     }
 
@@ -512,27 +658,13 @@ final class CodexUsageAnalyzer {
         return best
     }
 
-    private func longestTaskSeconds(from daily: [DayUsage]) -> Int {
-        let maxCalls = daily.map(\.calls).max() ?? 0
-        return max(0, maxCalls * 42)
-    }
-
-    private func longestSessionSeconds(from events: [TokenEvent]) -> Int {
-        var ranges: [String: (first: Date, last: Date)] = [:]
+    private func peakSessionTokens(from events: [TokenEvent]) -> Int {
+        var totals: [String: Int] = [:]
         for event in events {
-            if let current = ranges[event.sessionID] {
-                ranges[event.sessionID] = (
-                    min(current.first, event.timestamp),
-                    max(current.last, event.timestamp)
-                )
-            } else {
-                ranges[event.sessionID] = (event.timestamp, event.timestamp)
-            }
+            totals[event.sessionID, default: 0] += event.tokens
         }
 
-        return ranges.values
-            .map { max(0, Int($0.last.timeIntervalSince($0.first))) }
-            .max() ?? 0
+        return totals.values.max() ?? 0
     }
 
     private func parseDate(_ value: String) -> Date? {

@@ -1,6 +1,28 @@
 import AppKit
 import SwiftUI
 
+enum FloatingTokenPanelMetrics {
+    static let baseSize = NSSize(width: 201, height: 68)
+    static let baseCornerRadius: CGFloat = 14
+    static let horizontalPadding: CGFloat = 10
+    static let verticalPadding: CGFloat = 7
+    static let defaultScale = 1.0
+    static let scaleRange = 0.75...2.0
+
+    static func clampedScale(_ scale: Double) -> CGFloat {
+        CGFloat(min(max(scale, scaleRange.lowerBound), scaleRange.upperBound))
+    }
+
+    static func size(scale: Double) -> NSSize {
+        let clamped = clampedScale(scale)
+        return NSSize(width: baseSize.width * clamped, height: baseSize.height * clamped)
+    }
+
+    static func cornerRadius(scale: Double) -> CGFloat {
+        baseCornerRadius * clampedScale(scale)
+    }
+}
+
 @MainActor
 final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var isPresented = false
@@ -8,18 +30,18 @@ final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDe
     private var panel: NSPanel?
     private var onClose: (() -> Void)?
 
-    func show(store: CodexUsageStore, monitor: LiveRateMonitor, onClose: @escaping () -> Void) {
+    func show(store: CodexUsageStore, monitor: LiveRateMonitor, quota: AccountQuotaStore, scale: Double, onClose: @escaping () -> Void) {
         self.onClose = onClose
 
         if panel == nil {
             let hostingController = NSHostingController(
-                rootView: FloatingTokenPanelView(store: store, monitor: monitor) { [weak self] in
+                rootView: FloatingTokenPanelView(store: store, monitor: monitor, quota: quota) { [weak self] in
                     self?.onClose?()
                 }
             )
 
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 166, height: 46),
+                contentRect: NSRect(origin: .zero, size: FloatingTokenPanelMetrics.size(scale: scale)),
                 styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -34,15 +56,22 @@ final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDe
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
             panel.delegate = self
             panel.contentView?.wantsLayer = true
-            panel.contentView?.layer?.cornerRadius = 14
+            panel.contentView?.layer?.cornerRadius = FloatingTokenPanelMetrics.cornerRadius(scale: scale)
             panel.contentView?.layer?.cornerCurve = .continuous
             panel.contentView?.layer?.masksToBounds = true
             position(panel)
             self.panel = panel
         }
 
+        updateSize(scale: scale)
         panel?.orderFrontRegardless()
         isPresented = true
+    }
+
+    func updateSize(scale: Double) {
+        guard let panel else { return }
+        resizePanel(panel, scale: scale)
+        panel.contentView?.layer?.cornerRadius = FloatingTokenPanelMetrics.cornerRadius(scale: scale)
     }
 
     func close() {
@@ -52,7 +81,6 @@ final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDe
 
     func windowWillClose(_ notification: Notification) {
         isPresented = false
-        onClose?()
     }
 
     private func position(_ panel: NSPanel) {
@@ -79,19 +107,67 @@ final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDe
 struct FloatingTokenPanelView: View {
     @ObservedObject var store: CodexUsageStore
     @ObservedObject var monitor: LiveRateMonitor
+    @ObservedObject var quota: AccountQuotaStore
     @AppStorage("floatingPanelOpacity") private var floatingPanelOpacity = 0.88
+    @AppStorage("floatingPanelScale") private var floatingPanelScale = FloatingTokenPanelMetrics.defaultScale
     let onClose: () -> Void
 
     var body: some View {
-        ZStack {
-            TokenGlassBackground(opacity: floatingPanelOpacity)
-            TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor), onClose: onClose)
-                .padding(.leading, 12)
-                .padding(.trailing, 4)
-                .padding(.vertical, 6)
-                .offset(x: 2)
+        let scale = FloatingTokenPanelMetrics.clampedScale(floatingPanelScale)
+        let size = FloatingTokenPanelMetrics.size(scale: floatingPanelScale)
+
+        return ZStack {
+            ZStack {
+                TokenGlassBackground(opacity: floatingPanelOpacity)
+                TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor, quota: quota), onClose: onClose)
+                    .padding(.horizontal, FloatingTokenPanelMetrics.horizontalPadding)
+                    .padding(.vertical, FloatingTokenPanelMetrics.verticalPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+            .frame(width: FloatingTokenPanelMetrics.baseSize.width, height: FloatingTokenPanelMetrics.baseSize.height)
+            .scaleEffect(scale, anchor: .topLeading)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .frame(width: 166, height: 46)
+        .clipShape(RoundedRectangle(cornerRadius: FloatingTokenPanelMetrics.cornerRadius(scale: floatingPanelScale), style: .continuous))
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .background(FloatingPanelSizeSync(scale: floatingPanelScale))
+    }
+}
+
+@MainActor
+private func resizePanel(_ panel: NSPanel, scale: Double) {
+    let previousFrame = panel.frame
+    let topLeft = NSPoint(x: previousFrame.minX, y: previousFrame.maxY)
+    let targetSize = FloatingTokenPanelMetrics.size(scale: scale)
+    let targetFrame = anchoredPanelFrame(for: panel, size: targetSize, topLeft: topLeft)
+    panel.setFrame(targetFrame, display: true, animate: false)
+}
+
+@MainActor
+private func anchoredPanelFrame(for panel: NSPanel, size: NSSize, topLeft: NSPoint) -> NSRect {
+    let screenFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+    var origin = NSPoint(x: topLeft.x, y: topLeft.y - size.height)
+
+    if let screenFrame {
+        let margin: CGFloat = 8
+        origin.x = min(max(origin.x, screenFrame.minX + margin), screenFrame.maxX - size.width - margin)
+        origin.y = min(max(origin.y, screenFrame.minY + margin), screenFrame.maxY - size.height - margin)
+    }
+
+    return NSRect(origin: origin, size: size)
+}
+
+private struct FloatingPanelSizeSync: NSViewRepresentable {
+    let scale: Double
+
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        Task { @MainActor in
+            guard let panel = nsView.window as? NSPanel else { return }
+            resizePanel(panel, scale: scale)
+            panel.contentView?.layer?.cornerRadius = FloatingTokenPanelMetrics.cornerRadius(scale: scale)
+        }
     }
 }

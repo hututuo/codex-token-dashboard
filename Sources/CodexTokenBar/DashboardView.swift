@@ -4,17 +4,31 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var store = CodexUsageStore()
     @StateObject private var liveMonitor = LiveRateMonitor()
+    @StateObject private var quotaStore = AccountQuotaStore()
+    @StateObject private var providerSyncStore = ProviderSyncStore()
     @StateObject private var floatingPanel = FloatingTokenPanelController()
     @StateObject private var statusBarPanel = StatusBarTokenController()
     @AppStorage("tokenDisplayMode") private var tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
     @AppStorage("tokenDisplayModeDefaultedToFloatingV021") private var tokenDisplayModeDefaultedToFloating = false
+    @AppStorage("tokenDisplayModeDefaultedToFloatingQuotaV01") private var tokenDisplayModeDefaultedToFloatingQuota = false
+    @AppStorage("tokenDisplayModeDefaultedToFloatingQuotaV02") private var tokenDisplayModeDefaultedToFloatingQuotaV02 = false
+    @AppStorage("tokenDisplayModeInitialDefaultAppliedV03") private var tokenDisplayModeInitialDefaultApplied = false
+    @AppStorage("tokenDisplayModeUserSelected") private var tokenDisplayModeUserSelected = false
+    @AppStorage("tokenDisplayModePanelCloseRepairV01") private var tokenDisplayModePanelCloseRepairApplied = false
     @AppStorage("preciseTokenCountingEnabled") private var preciseTokenCountingEnabled = false
     @AppStorage("floatingPanelOpacity") private var floatingPanelOpacity = 0.88
+    @AppStorage("floatingPanelScale") private var floatingPanelScale = FloatingTokenPanelMetrics.defaultScale
+    @State private var showingProviderSync = false
+
+    init() {
+        Self.applyStartupDisplayModeRepairIfNeeded()
+    }
 
     private var tokenDisplayMode: Binding<TokenDisplayMode> {
         Binding {
             TokenDisplayMode(rawValue: tokenDisplayModeRaw) ?? .floating
         } set: { mode in
+            tokenDisplayModeUserSelected = true
             tokenDisplayModeRaw = mode.rawValue
         }
     }
@@ -28,12 +42,17 @@ struct DashboardView: View {
                 VStack(spacing: 24) {
                     HeaderView(
                         snapshot: store.snapshot,
+                        quotaSnapshot: quotaStore.snapshot,
                         status: store.status,
                         dataSourceLabel: store.dataSourceLabel,
                         dataSourceOrigin: store.dataSourceOrigin,
                         isRefreshing: store.isRefreshing,
-                        onRefresh: store.refresh,
-                        onChangeDirectory: store.chooseDataSourceDirectory
+                        onRefresh: refreshAllData,
+                        onChangeDirectory: store.chooseDataSourceDirectory,
+                        onOpenProviderSync: {
+                            showingProviderSync = true
+                            providerSyncStore.scan(dataSource: store.currentDataSource)
+                        }
                     )
 
                     StatStrip(stats: store.snapshot.stats)
@@ -42,7 +61,8 @@ struct DashboardView: View {
                         monitor: liveMonitor,
                         tokenDisplayMode: tokenDisplayMode,
                         preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
-                        floatingPanelOpacity: $floatingPanelOpacity
+                        floatingPanelOpacity: $floatingPanelOpacity,
+                        floatingPanelScale: $floatingPanelScale
                     )
 
                     ActivitySection(
@@ -60,6 +80,8 @@ struct DashboardView: View {
         .onAppear {
             applyFloatingModeDefaultIfNeeded()
             liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
+            quotaStore.start()
+            providerSyncStore.scan(dataSource: store.currentDataSource)
             updateTokenDisplaySurface()
             updateUsageRefreshCadence()
         }
@@ -67,16 +89,25 @@ struct DashboardView: View {
             updateTokenDisplaySurface()
             updateUsageRefreshCadence()
         }
+        .onChange(of: floatingPanelScale) {
+            updateTokenDisplaySurface()
+        }
         .onChange(of: preciseTokenCountingEnabled) {
             liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
             updateUsageRefreshCadence()
         }
+        .sheet(isPresented: $showingProviderSync) {
+            ProviderSyncPage(
+                store: providerSyncStore,
+                dataSource: store.currentDataSource
+            )
+        }
         .toolbar {
             ToolbarItemGroup {
                 Button {
-                    store.refresh()
+                    refreshAllData()
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
@@ -97,12 +128,54 @@ struct DashboardView: View {
         }
     }
 
+    private func refreshAllData() {
+        store.refresh()
+        quotaStore.refresh()
+        providerSyncStore.scan(dataSource: store.currentDataSource)
+    }
+
     private func applyFloatingModeDefaultIfNeeded() {
-        guard !tokenDisplayModeDefaultedToFloating else { return }
         tokenDisplayModeDefaultedToFloating = true
-        if TokenDisplayMode(rawValue: tokenDisplayModeRaw) == nil || tokenDisplayModeRaw == TokenDisplayMode.off.rawValue {
+        tokenDisplayModeDefaultedToFloatingQuota = true
+        tokenDisplayModeDefaultedToFloatingQuotaV02 = true
+
+        let currentMode = TokenDisplayMode(rawValue: tokenDisplayModeRaw)
+        if !tokenDisplayModeInitialDefaultApplied && !tokenDisplayModeUserSelected,
+           currentMode == nil || currentMode == .off {
             tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
         }
+        tokenDisplayModeInitialDefaultApplied = true
+
+        if !tokenDisplayModePanelCloseRepairApplied,
+           currentMode == nil || currentMode == .off {
+            tokenDisplayModeRaw = TokenDisplayMode.floating.rawValue
+            tokenDisplayModeUserSelected = false
+        }
+        tokenDisplayModePanelCloseRepairApplied = true
+    }
+
+    private static func applyStartupDisplayModeRepairIfNeeded() {
+        let defaults = UserDefaults.standard
+        let defaultAppliedKey = "tokenDisplayModeInitialDefaultAppliedV03"
+        let userSelectedKey = "tokenDisplayModeUserSelected"
+        let panelCloseRepairKey = "tokenDisplayModePanelCloseRepairV01"
+
+        let rawMode = defaults.string(forKey: "tokenDisplayMode")
+        let mode = rawMode.flatMap(TokenDisplayMode.init(rawValue:))
+
+        if !defaults.bool(forKey: defaultAppliedKey), !defaults.bool(forKey: userSelectedKey) {
+            if mode == nil || mode == .off {
+                defaults.set(TokenDisplayMode.floating.rawValue, forKey: "tokenDisplayMode")
+            }
+            defaults.set(true, forKey: defaultAppliedKey)
+            return
+        }
+
+        if !defaults.bool(forKey: panelCloseRepairKey), mode == nil || mode == .off {
+            defaults.set(TokenDisplayMode.floating.rawValue, forKey: "tokenDisplayMode")
+            defaults.set(false, forKey: userSelectedKey)
+        }
+        defaults.set(true, forKey: panelCloseRepairKey)
     }
 
     private func updateTokenDisplaySurface() {
@@ -112,12 +185,14 @@ struct DashboardView: View {
             statusBarPanel.close()
         case .floating:
             statusBarPanel.close()
-            floatingPanel.show(store: store, monitor: liveMonitor) {
+            floatingPanel.show(store: store, monitor: liveMonitor, quota: quotaStore, scale: floatingPanelScale) {
+                tokenDisplayModeUserSelected = true
                 tokenDisplayModeRaw = TokenDisplayMode.off.rawValue
             }
         case .statusBar:
             floatingPanel.close()
-            statusBarPanel.show(store: store, monitor: liveMonitor) {
+            statusBarPanel.show(store: store, monitor: liveMonitor, quota: quotaStore) {
+                tokenDisplayModeUserSelected = true
                 tokenDisplayModeRaw = TokenDisplayMode.off.rawValue
             }
         }
@@ -143,12 +218,22 @@ struct DashboardView: View {
 
 struct HeaderView: View {
     let snapshot: DashboardSnapshot
+    let quotaSnapshot: AccountQuotaSnapshot
     let status: String
     let dataSourceLabel: String
     let dataSourceOrigin: String
     let isRefreshing: Bool
     let onRefresh: () -> Void
     let onChangeDirectory: () -> Void
+    let onOpenProviderSync: () -> Void
+
+    private var accountDisplayName: String {
+        quotaSnapshot.accountDisplayName
+    }
+
+    private var planDisplayName: String {
+        "Codex Token Bar"
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -161,14 +246,19 @@ struct HeaderView: View {
                     .foregroundStyle(.white)
             }
 
-            VStack(spacing: 7) {
-                Text("Codex Token Bar")
+            VStack(spacing: 14) {
+                Text(accountDisplayName)
                     .font(.system(size: 28, weight: .regular))
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
 
                 HStack(spacing: 10) {
-                    Text("@local-codex")
+                    Text(planDisplayName)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: 132, alignment: .leading)
                     Text("Local")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -184,6 +274,8 @@ struct HeaderView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
+                    Spacer(minLength: 8)
+
                     Button(action: onRefresh) {
                         Label(isRefreshing ? "刷新中" : "立即刷新", systemImage: "arrow.clockwise")
                             .font(.system(size: 13, weight: .medium))
@@ -196,8 +288,19 @@ struct HeaderView: View {
                             .font(.system(size: 13, weight: .medium))
                     }
                     .buttonStyle(.bordered)
+
+                    Button(action: onOpenProviderSync) {
+                        Label("会话消失修复", systemImage: "wrench.and.screwdriver")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
                 }
                 .font(.system(size: 15))
+                .padding(.leading, 12)
+                .frame(maxWidth: 980)
+
+                AccountQuotaStrip(snapshot: quotaSnapshot)
+                    .padding(.top, 3)
             }
         }
     }
@@ -246,7 +349,7 @@ struct StatStrip: View {
             Divider().frame(height: 46)
             StatCell(value: stats.peakDayTokens.abbreviatedTokens, label: "峰值 Token 数")
             Divider().frame(height: 46)
-            StatCell(value: duration(stats.longestTaskSeconds), label: "最长任务时长")
+            StatCell(value: stats.peakThreadTokens.abbreviatedTokens, label: "单会话最大 Token")
             Divider().frame(height: 46)
             StatCell(value: "\(stats.currentStreakDays) 天", label: "当前连续天数")
             Divider().frame(height: 46)
@@ -265,14 +368,6 @@ struct StatStrip: View {
         .frame(maxWidth: 980)
     }
 
-    private func duration(_ seconds: Int) -> String {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        if hours > 0 {
-            return "\(hours) 小时 \(minutes) 分"
-        }
-        return "\(minutes) 分"
-    }
 }
 
 struct StatCell: View {

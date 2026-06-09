@@ -5,6 +5,7 @@ struct LiveRateView: View {
     @Binding var tokenDisplayMode: TokenDisplayMode
     @Binding var preciseTokenCountingEnabled: Bool
     @Binding var floatingPanelOpacity: Double
+    @Binding var floatingPanelScale: Double
 
     private var primarySnapshot: LiveRateSnapshot {
         monitor.totalSnapshot
@@ -52,7 +53,8 @@ struct LiveRateView: View {
                     LiveRateControls(
                         tokenDisplayMode: $tokenDisplayMode,
                         preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
-                        floatingPanelOpacity: $floatingPanelOpacity
+                        floatingPanelOpacity: $floatingPanelOpacity,
+                        floatingPanelScale: $floatingPanelScale
                     )
                 }
             }
@@ -107,6 +109,10 @@ struct LiveRateControls: View {
     @Binding var tokenDisplayMode: TokenDisplayMode
     @Binding var preciseTokenCountingEnabled: Bool
     @Binding var floatingPanelOpacity: Double
+    @Binding var floatingPanelScale: Double
+
+    private let contentWidth: CGFloat = 286
+    private let controlWidth: CGFloat = 139
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -127,7 +133,7 @@ struct LiveRateControls: View {
                     Label("显示：\(tokenDisplayMode.controlLabel)", systemImage: tokenDisplayMode.systemImage)
                 }
                 .buttonStyle(.bordered)
-                .frame(width: 139)
+                .frame(width: controlWidth)
                 .help("显示模式")
 
                 Toggle(isOn: $preciseTokenCountingEnabled) {
@@ -135,11 +141,16 @@ struct LiveRateControls: View {
                 }
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
-                .frame(width: 139)
+                .frame(width: controlWidth)
                 .help("开启后使用 o200k_base 精确统计流式输出 token；关闭后使用轻量估算。")
             }
+            .frame(width: contentWidth, alignment: .leading)
 
             FloatingOpacityControl(opacity: $floatingPanelOpacity)
+                .frame(width: contentWidth, alignment: .leading)
+
+            FloatingSizeControl(scale: $floatingPanelScale)
+                .frame(width: contentWidth, alignment: .leading)
         }
         .controlSize(.small)
         .font(.system(size: 11, weight: .medium))
@@ -158,12 +169,19 @@ struct FloatingOpacityControl: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Label("悬浮窗透明度", systemImage: "circle.lefthalf.filled")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .leading)
+            HStack(spacing: 5) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 10, weight: .medium))
+                    .frame(width: 12, height: 18, alignment: .center)
+                Text("悬浮窗透明度")
+                    .font(.system(size: 10, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.secondary)
+            .frame(width: 82, height: 18, alignment: .leading)
+
             Slider(value: $opacity, in: 0.45...0.98, step: 0.01)
-                .frame(width: 126)
+                .frame(width: 138)
             Text("\(Int((opacity * 100).rounded()))%")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -176,8 +194,41 @@ struct FloatingOpacityControl: View {
             Capsule()
                 .fill(AppTheme.raisedBackground.opacity(0.72))
         )
-        .frame(width: 274)
         .help("悬浮窗透明度")
+    }
+}
+
+struct FloatingSizeControl: View {
+    @Binding var scale: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .frame(width: 12, height: 18, alignment: .center)
+                Text("悬浮窗大小")
+                    .font(.system(size: 10, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.secondary)
+            .frame(width: 82, height: 18, alignment: .leading)
+
+            Slider(value: $scale, in: FloatingTokenPanelMetrics.scaleRange, step: 0.01)
+                .frame(width: 138)
+            Text("\(Int((scale * 100).rounded()))%")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 34, alignment: .trailing)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(AppTheme.raisedBackground.opacity(0.72))
+        )
+        .help("等比调整悬浮窗大小")
     }
 }
 

@@ -16,6 +16,10 @@ final class CodexUsageStore: ObservableObject {
     private var timer: Timer?
     private var refreshInterval: TimeInterval = 60
 
+    var currentDataSource: CodexDataSource? {
+        dataSource
+    }
+
     init() {
         dataSource = resolver.resolve()
         updateDataSourceLabels()
@@ -110,7 +114,7 @@ extension DashboardSnapshot {
         stats: DashboardStats(
             totalTokens: 0,
             peakDayTokens: 0,
-            longestTaskSeconds: 0,
+            peakThreadTokens: 0,
             currentStreakDays: 0,
             longestStreakDays: 0,
             totalCalls: 0,
@@ -147,7 +151,7 @@ extension DashboardSnapshot {
             stats: DashboardStats(
                 totalTokens: days.reduce(0) { $0 + $1.tokens },
                 peakDayTokens: days.map(\.tokens).max() ?? 0,
-                longestTaskSeconds: 94 * 60,
+                peakThreadTokens: 94_000_000,
                 currentStreakDays: 26,
                 longestStreakDays: 26,
                 totalCalls: bins.reduce(0) { $0 + $1.calls },

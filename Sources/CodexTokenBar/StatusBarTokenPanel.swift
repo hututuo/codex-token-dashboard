@@ -10,11 +10,13 @@ final class StatusBarTokenController: NSObject, ObservableObject, NSPopoverDeleg
     private var timer: Timer?
     private weak var store: CodexUsageStore?
     private weak var monitor: LiveRateMonitor?
+    private weak var quota: AccountQuotaStore?
     private var onClose: (() -> Void)?
 
-    func show(store: CodexUsageStore, monitor: LiveRateMonitor, onClose: @escaping () -> Void) {
+    func show(store: CodexUsageStore, monitor: LiveRateMonitor, quota: AccountQuotaStore, onClose: @escaping () -> Void) {
         self.store = store
         self.monitor = monitor
+        self.quota = quota
         self.onClose = onClose
 
         if statusItem == nil {
@@ -35,7 +37,7 @@ final class StatusBarTokenController: NSObject, ObservableObject, NSPopoverDeleg
             popover.delegate = self
             popover.contentSize = NSSize(width: 276, height: 140)
             popover.contentViewController = NSHostingController(
-                rootView: StatusBarTokenPopoverView(store: store, monitor: monitor) { [weak self] in
+                rootView: StatusBarTokenPopoverView(store: store, monitor: monitor, quota: quota) { [weak self] in
                     self?.onClose?()
                 }
             )
@@ -79,8 +81,8 @@ final class StatusBarTokenController: NSObject, ObservableObject, NSPopoverDeleg
     }
 
     private func updateStatusItem() {
-        guard let store, let monitor else { return }
-        let snapshot = TokenDisplaySnapshot.make(store: store, monitor: monitor)
+        guard let store, let monitor, let quota else { return }
+        let snapshot = TokenDisplaySnapshot.make(store: store, monitor: monitor, quota: quota)
         guard let button = statusItem?.button else { return }
         button.title = " \(snapshot.statusBarTitle)"
         button.alignment = .center
@@ -91,12 +93,13 @@ final class StatusBarTokenController: NSObject, ObservableObject, NSPopoverDeleg
 struct StatusBarTokenPopoverView: View {
     @ObservedObject var store: CodexUsageStore
     @ObservedObject var monitor: LiveRateMonitor
+    @ObservedObject var quota: AccountQuotaStore
     let onClose: () -> Void
 
     var body: some View {
         ZStack {
             TokenGlassBackground()
-            TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor), onClose: onClose)
+            TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor, quota: quota), onClose: onClose)
                 .padding(14)
         }
         .frame(width: 276, height: 140)

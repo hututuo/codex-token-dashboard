@@ -54,12 +54,14 @@ struct ExportSnapshotView: View {
             VStack(spacing: 24) {
                 HeaderView(
                     snapshot: snapshot,
+                    quotaSnapshot: .empty,
                     status: "Exported \(DateFormatter.status.string(from: Date()))",
                     dataSourceLabel: "本地数据",
                     dataSourceOrigin: "导出",
                     isRefreshing: false,
                     onRefresh: {},
-                    onChangeDirectory: {}
+                    onChangeDirectory: {},
+                    onOpenProviderSync: {}
                 )
                 StatStrip(stats: snapshot.stats)
                 ActivitySection(dailyUsage: snapshot.dailyUsage, selectedMode: .constant(.daily))
