@@ -5,6 +5,29 @@ private enum TokenDisplayLayout {
     static let metricOutset: CGFloat = 9
 }
 
+private struct TokenDisplayScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var tokenDisplayScale: CGFloat {
+        get { self[TokenDisplayScaleKey.self] }
+        set { self[TokenDisplayScaleKey.self] = newValue }
+    }
+}
+
+private extension CGFloat {
+    func scaled(by scale: CGFloat) -> CGFloat {
+        self * Swift.max(scale, 0.1)
+    }
+}
+
+private extension BinaryInteger {
+    func scaled(by scale: CGFloat) -> CGFloat {
+        CGFloat(self) * Swift.max(scale, 0.1)
+    }
+}
+
 enum TokenDisplayMode: String, CaseIterable, Identifiable {
     case off
     case floating
@@ -117,19 +140,20 @@ struct TokenDisplaySnapshot {
 struct TokenDisplayCard: View {
     let snapshot: TokenDisplaySnapshot
     let onClose: (() -> Void)?
+    @Environment(\.tokenDisplayScale) private var displayScale
 
     var body: some View {
-        VStack(alignment: .center, spacing: 3) {
-            HStack(alignment: .center, spacing: 8) {
-                HStack(alignment: .lastTextBaseline, spacing: 4) {
+        VStack(alignment: .center, spacing: 3.scaled(by: displayScale)) {
+            HStack(alignment: .center, spacing: 8.scaled(by: displayScale)) {
+                HStack(alignment: .lastTextBaseline, spacing: 4.scaled(by: displayScale)) {
                     Text(String(format: "%.1f", snapshot.rate))
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .font(.system(size: 18.scaled(by: displayScale), weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                        .frame(width: 56, alignment: .leading)
+                        .frame(width: 56.scaled(by: displayScale), alignment: .leading)
                     Text("tok/s")
-                        .font(.system(size: 7, weight: .semibold))
+                        .font(.system(size: 7.scaled(by: displayScale), weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
 
@@ -138,12 +162,12 @@ struct TokenDisplayCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 6.scaled(by: displayScale)) {
                 TokenDisplayMetric(label: "总", value: snapshot.consumedTokens.abbreviatedTokens)
-                    .offset(x: -TokenDisplayLayout.metricOutset)
+                    .offset(x: -TokenDisplayLayout.metricOutset.scaled(by: displayScale))
                 TokenDisplayMetric(label: "今", value: snapshot.todayTokens.abbreviatedTokens)
                 TokenDisplayMetric(label: "次", value: "\(snapshot.todayRequests)")
-                    .offset(x: TokenDisplayLayout.metricOutset)
+                    .offset(x: TokenDisplayLayout.metricOutset.scaled(by: displayScale))
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
@@ -156,29 +180,31 @@ struct TokenDisplayCard: View {
 
 struct TokenQuotaMiniStrip: View {
     let snapshot: AccountQuotaSnapshot
+    @Environment(\.tokenDisplayScale) private var displayScale
 
     var body: some View {
         GeometryReader { proxy in
             let windows = [snapshot.fiveHour, snapshot.sevenDay].compactMap { $0 }
-            let spacing: CGFloat = 4
-            let segmentWidth = max(44, (proxy.size.width - spacing * CGFloat(max(windows.count - 1, 0))) / CGFloat(max(windows.count, 1)))
+            let spacing = 4.scaled(by: displayScale)
+            let height = 13.scaled(by: displayScale)
+            let segmentWidth = max(44.scaled(by: displayScale), (proxy.size.width - spacing * CGFloat(max(windows.count - 1, 0))) / CGFloat(max(windows.count, 1)))
 
             HStack(spacing: spacing) {
                 ForEach(windows, id: \.label) { window in
                     TokenQuotaMiniSegment(window: window)
-                        .frame(width: segmentWidth, height: 13)
+                        .frame(width: segmentWidth, height: height)
                 }
                 if !snapshot.isAvailable {
                     Text("额度 --")
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.system(size: 8.scaled(by: displayScale), weight: .semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-            .frame(width: proxy.size.width, height: 13, alignment: .center)
+            .frame(width: proxy.size.width, height: height, alignment: .center)
         }
-        .frame(height: 13)
+        .frame(height: 13.scaled(by: displayScale))
         .help(quotaHelpText)
     }
 
@@ -194,6 +220,7 @@ struct TokenQuotaMiniStrip: View {
 
 struct TokenQuotaMiniSegment: View {
     let window: AccountQuotaWindow
+    @Environment(\.tokenDisplayScale) private var displayScale
 
     private var fillFraction: CGFloat {
         CGFloat(Double(window.remainingPercent) / 100.0)
@@ -208,15 +235,15 @@ struct TokenQuotaMiniSegment: View {
                     .fill(AppTheme.accentBlue.opacity(0.72))
                     .frame(width: max(2, proxy.size.width * fillFraction))
                 Text("\(window.compactDisplayLabel) \(window.remainingPercent)% \(window.compactResetText)")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8.scaled(by: displayScale), weight: .bold))
                     .foregroundStyle(.primary.opacity(0.82))
                     .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .padding(.horizontal, 3)
+                    .padding(.horizontal, 3.scaled(by: displayScale))
             }
         }
-        .frame(height: 13)
+        .frame(height: 13.scaled(by: displayScale))
     }
 }
 
@@ -224,6 +251,7 @@ struct TokenDisplayRateBar: View {
     let rate: Double
     let usageStatus: String
     let onClose: (() -> Void)?
+    @Environment(\.tokenDisplayScale) private var displayScale
     private let fullScale = 250.0
 
     private var fillFraction: CGFloat {
@@ -231,18 +259,18 @@ struct TokenDisplayRateBar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 1) {
+        VStack(alignment: .leading, spacing: 2.scaled(by: displayScale)) {
+            HStack(spacing: 1.scaled(by: displayScale)) {
                 Text(usageStatus)
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.system(size: 7.scaled(by: displayScale), weight: .semibold))
                     .foregroundStyle(.secondary.opacity(0.86))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                Spacer(minLength: 3)
+                Spacer(minLength: 3.scaled(by: displayScale))
 
                 Text("总速")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7.scaled(by: displayScale), weight: .bold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -250,9 +278,9 @@ struct TokenDisplayRateBar: View {
                 if let onClose {
                     Button(action: onClose) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 6, weight: .bold))
+                            .font(.system(size: 6.scaled(by: displayScale), weight: .bold))
                             .foregroundStyle(.secondary.opacity(0.72))
-                            .frame(width: 9, height: 9)
+                            .frame(width: 9.scaled(by: displayScale), height: 9.scaled(by: displayScale))
                     }
                     .buttonStyle(.plain)
                 }
@@ -260,7 +288,7 @@ struct TokenDisplayRateBar: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
 
             GeometryReader { proxy in
-                let width = max(3, proxy.size.width * fillFraction)
+                let width = max(3.scaled(by: displayScale), proxy.size.width * fillFraction)
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.white.opacity(0.12))
@@ -275,24 +303,25 @@ struct TokenDisplayRateBar: View {
                         .frame(width: width)
                 }
             }
-            .frame(height: 4)
+            .frame(height: 4.scaled(by: displayScale))
         }
-        .frame(height: 18)
+        .frame(height: 18.scaled(by: displayScale))
     }
 }
 
 struct TokenDisplayMetric: View {
     let label: String
     let value: String
+    @Environment(\.tokenDisplayScale) private var displayScale
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 3.scaled(by: displayScale)) {
             Text(label)
-                .font(.system(size: 7, weight: .medium))
+                .font(.system(size: 7.scaled(by: displayScale), weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Text(value)
-                .font(.system(size: 7, weight: .semibold))
+                .font(.system(size: 7.scaled(by: displayScale), weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -303,12 +332,13 @@ struct TokenDisplayMetric: View {
 
 struct TokenGlassBackground: View {
     var opacity = 0.88
+    var cornerRadius: CGFloat = 14
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(AppTheme.panelBackground.opacity(opacity))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -322,7 +352,7 @@ struct TokenGlassBackground: View {
                     )
             )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     LinearGradient(
                         colors: [Color.white.opacity(0.16), Color.white.opacity(0.045)],

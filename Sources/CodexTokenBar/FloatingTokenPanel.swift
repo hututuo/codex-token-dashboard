@@ -39,9 +39,12 @@ final class FloatingTokenPanelController: NSObject, ObservableObject, NSWindowDe
                     self?.onClose?()
                 }
             )
+            let initialSize = FloatingTokenPanelMetrics.size(scale: scale)
+            hostingController.view.frame = NSRect(origin: .zero, size: initialSize)
+            hostingController.view.autoresizingMask = [.width, .height]
 
             let panel = NSPanel(
-                contentRect: NSRect(origin: .zero, size: FloatingTokenPanelMetrics.size(scale: scale)),
+                contentRect: NSRect(origin: .zero, size: initialSize),
                 styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -115,20 +118,18 @@ struct FloatingTokenPanelView: View {
     var body: some View {
         let scale = FloatingTokenPanelMetrics.clampedScale(floatingPanelScale)
         let size = FloatingTokenPanelMetrics.size(scale: floatingPanelScale)
+        let cornerRadius = FloatingTokenPanelMetrics.cornerRadius(scale: floatingPanelScale)
 
         return ZStack {
-            ZStack {
-                TokenGlassBackground(opacity: floatingPanelOpacity)
-                TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor, quota: quota), onClose: onClose)
-                    .padding(.horizontal, FloatingTokenPanelMetrics.horizontalPadding)
-                    .padding(.vertical, FloatingTokenPanelMetrics.verticalPadding)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            }
-            .frame(width: FloatingTokenPanelMetrics.baseSize.width, height: FloatingTokenPanelMetrics.baseSize.height)
-            .scaleEffect(scale, anchor: .topLeading)
+            TokenGlassBackground(opacity: floatingPanelOpacity, cornerRadius: cornerRadius)
+            TokenDisplayCard(snapshot: TokenDisplaySnapshot.make(store: store, monitor: monitor, quota: quota), onClose: onClose)
+                .environment(\.tokenDisplayScale, scale)
+                .padding(.horizontal, FloatingTokenPanelMetrics.horizontalPadding * scale)
+                .padding(.vertical, FloatingTokenPanelMetrics.verticalPadding * scale)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .clipShape(RoundedRectangle(cornerRadius: FloatingTokenPanelMetrics.cornerRadius(scale: floatingPanelScale), style: .continuous))
         .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .background(FloatingPanelSizeSync(scale: floatingPanelScale))
     }
 }
@@ -139,6 +140,9 @@ private func resizePanel(_ panel: NSPanel, scale: Double) {
     let topLeft = NSPoint(x: previousFrame.minX, y: previousFrame.maxY)
     let targetSize = FloatingTokenPanelMetrics.size(scale: scale)
     let targetFrame = anchoredPanelFrame(for: panel, size: targetSize, topLeft: topLeft)
+    panel.contentViewController?.view.frame = NSRect(origin: .zero, size: targetSize)
+    panel.contentMinSize = targetSize
+    panel.contentMaxSize = targetSize
     panel.setFrame(targetFrame, display: true, animate: false)
 }
 
