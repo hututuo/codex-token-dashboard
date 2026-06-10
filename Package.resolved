@@ -1,0 +1,24 @@
+{
+  "originHash" : "c8b93abe35577bfabf40083d4081feaa5e8ffe5a530bb90b4bb3e3673b56ece4",
+  "pins" : [
+    {
+      "identity" : "sparkle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sparkle-project/Sparkle.git",
+      "state" : {
+        "revision" : "d46d456107feacc80711b21847b82b07bd9fb46e",
+        "version" : "2.9.3"
+      }
+    },
+    {
+      "identity" : "tiktokenswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/narner/TiktokenSwift.git",
+      "state" : {
+        "revision" : "661c349ebdc5e90c29f855e8c19f8984d401863b",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

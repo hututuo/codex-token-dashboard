@@ -5,7 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Codex Token Bar"
 PRODUCT_NAME="CodexTokenBar"
 CONFIGURATION="${1:-debug}"
-APP_VERSION="${APP_VERSION:-0.2.2}"
+APP_VERSION="${APP_VERSION:-0.3.0}"
+APP_BUILD="${APP_BUILD:-300}"
+BUNDLE_ID="local.codex.token-bar"
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/hututuo/codex-token-bar/main/appcast.xml}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-gzOiRKuKM4MkXj1OaYuL40U39RvfEWavuB8PaOdMDq0=}"
 
 cd "$ROOT_DIR"
 "$ROOT_DIR/scripts/prepare_tiktoken_lfs.sh"
@@ -16,15 +20,22 @@ APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
+FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
+SPARKLE_FRAMEWORK_SRC="$ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 
 cp "$BUILD_DIR/$PRODUCT_NAME" "$MACOS_DIR/$PRODUCT_NAME"
 chmod +x "$MACOS_DIR/$PRODUCT_NAME"
 
 if [[ -f "$ROOT_DIR/Resources/AppIcon.icns" ]]; then
   cp "$ROOT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+fi
+
+if [[ -d "$SPARKLE_FRAMEWORK_SRC" ]]; then
+  ditto "$SPARKLE_FRAMEWORK_SRC" "$FRAMEWORKS_DIR/Sparkle.framework"
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$PRODUCT_NAME" >/dev/null 2>&1 || true
 fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
@@ -37,7 +48,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>
   <string>CodexTokenBar</string>
   <key>CFBundleIdentifier</key>
-  <string>local.codex.token-bar</string>
+  <string>$BUNDLE_ID</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -49,14 +60,33 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key>
   <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$APP_BUILD</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>SUEnableInstallerLauncherService</key>
+  <true/>
+  <key>SUFeedURL</key>
+  <string>$SPARKLE_FEED_URL</string>
+  <key>SUPublicEDKey</key>
+  <string>$SPARKLE_PUBLIC_ED_KEY</string>
 </dict>
 </plist>
 PLIST
+
+if [[ -d "$FRAMEWORKS_DIR/Sparkle.framework" ]]; then
+  codesign --force --sign - --timestamp=none "$FRAMEWORKS_DIR/Sparkle.framework/Versions/B/Autoupdate" >/dev/null
+  codesign --force --sign - --timestamp=none "$FRAMEWORKS_DIR/Sparkle.framework/Versions/B/Updater.app" >/dev/null
+  codesign --force --sign - --timestamp=none "$FRAMEWORKS_DIR/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" >/dev/null
+  codesign --force --sign - --timestamp=none "$FRAMEWORKS_DIR/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" >/dev/null
+  codesign --force --sign - --timestamp=none "$FRAMEWORKS_DIR/Sparkle.framework" >/dev/null
+fi
+
+codesign --force --sign - --timestamp=none \
+  --requirements "=designated => identifier \"$BUNDLE_ID\"" \
+  "$APP_DIR" >/dev/null
+codesign --verify --deep --strict --verbose=2 "$APP_DIR" >/dev/null
 
 echo "$APP_DIR"
 

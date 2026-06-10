@@ -3,7 +3,6 @@
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # Local app packaging output
 dist/

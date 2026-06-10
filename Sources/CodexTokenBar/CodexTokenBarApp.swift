@@ -1,8 +1,14 @@
+import Sparkle
 import SwiftUI
 
 @main
 struct CodexTokenBarApp: App {
     @StateObject private var loginItemStore = LoginItemStore()
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +22,10 @@ struct CodexTokenBarApp: App {
         .defaultSize(width: 1240, height: 1000)
         .commands {
             CommandGroup(after: .appInfo) {
+                CheckForUpdatesMenuItem(updater: updaterController.updater)
+
+                Divider()
+
                 Toggle(
                     loginItemStore.menuTitle,
                     isOn: Binding(

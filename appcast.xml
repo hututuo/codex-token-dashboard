@@ -1,0 +1,34 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Codex Token Bar</title>
+        <item>
+            <title>0.3.0</title>
+            <pubDate>Thu, 11 Jun 2026 01:51:57 +0800</pubDate>
+            <sparkle:version>300</sparkle:version>
+            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# Codex Token Bar v0.3.0
+
+This release turns Codex Token Bar into a fuller local usage console while keeping the app local-first.
+
+## Highlights
+
+- Adds Sparkle-based in-app update checking with signed update metadata.
+- Adds a DMG release package, checksums, and a versioned app zip for updates.
+- Adds account quota tracking with 5h / 7d trend lines, local hourly heartbeat storage, and compact pace hints.
+- Adds cache-hit analytics by day, hour, session, and turn, including a cache hit-rate curve in the 24h chart.
+- Improves the floating token-rate panel with quota context, scaling, opacity, and default-on first launch behavior.
+- Improves the session disappearance repair flow with a guided scan / backup / repair / verify workflow and rollback list.
+- Reduces scroll jank by removing low-value large shadows and moving expensive controls off hot render paths.
+
+## Notes
+
+- The app remains ad-hoc signed and is not Apple notarized. Verify the SHA256 checksum before opening if macOS warns about an unidentified developer.
+- The app reads local Codex data only. It does not upload prompts, outputs, logs, or account quota data.
+]]></description>
+            <enclosure url="https://github.com/hututuo/codex-token-bar/releases/download/v0.3.0/CodexTokenBar-v0.3.0-macos-arm64.app.zip" length="4760309" type="application/octet-stream" sparkle:edSignature="rl26MVxOKgPxWL0s+YMAyEfKvBg05iC73xG6g8csWrECShIeHsCPdB4hydkv4a0/iLAIRdTK2+0lbCkLAIoqDQ=="/>
+        </item>
+    </channel>
+</rss>

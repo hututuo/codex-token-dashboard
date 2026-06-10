@@ -1,8 +1,6 @@
 # Codex Token Bar
 
-<p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
-</p>
+简体中文 | [English](#english)
 
 <table align="center">
   <tr>
@@ -11,103 +9,105 @@
       <strong>Codex Token Bar</strong>
     </td>
     <td align="center" width="280">
-      <img src="Assets/wechat-group-qr.jpeg" width="220" alt="WeChat group QR code for HTT repositories"><br>
-      WeChat group for discussion, releases, and update notes.
+      <img src="Assets/wechat-group-qr.jpeg" width="220" alt="HTT 的仓库交流群二维码"><br>
+      欢迎扫码加入群聊，讨论使用问题、交流想法，也会发布产品发布和更新通知。
     </td>
   </tr>
 </table>
 
-A local-first macOS SwiftUI app for visualizing Codex token usage and live output speed from local session logs.
+Codex Token Bar 是一个本地优先的 macOS SwiftUI 应用，用来从本地 Codex 日志查看 token 用量、实时输出速度、缓存命中率和账号额度节奏。
 
 <p align="center">
-  <img src="Assets/DashboardPreview.png" alt="Codex Token Bar screenshot" width="100%">
+  <img src="Assets/DashboardPreview.png" alt="Codex Token Bar 主界面截图" width="100%">
 </p>
 
 <p align="center">
-  <img src="Assets/FloatingPanelPreview.png" alt="Floating live token-rate panel" width="420">
+  <img src="Assets/FloatingPanelPreview.png" alt="悬浮实时 token 速率窗口" width="420">
 </p>
 
-## Install
+## 亮点
 
-Recommended one-line install:
+- 全会话实时 token 速率，支持悬浮窗、透明度、缩放和单会话下钻。
+- 年度 token 热力图、最近 24 小时 5 分钟粒度曲线、缓存命中率曲线和缓存排行。
+- 5h / 7d 账号额度显示、本地轻量历史记录和“使劲蹬”等节奏提示。
+- “会话消失修复”向导：扫描、备份、修复、验证和多备份回滚。
+- 本地优先：读取 `~/.codex` 本地数据，不上传 prompt、输出、日志或账号额度。
+- Sparkle 更新检查：菜单栏 `Codex Token Bar -> 检查更新...`。
+
+## 为什么
+
+Codex 的本地日志里已经有很多有用信息，但平时很难快速看清“今天用了多少”“现在输出多快”“缓存是不是命中”“额度够不够烧”。这个应用把这些本地数据整理成一个轻量 dashboard，并提供一个不挡视线的小悬浮窗。
+
+## 安装
+
+推荐从 [GitHub Releases](https://github.com/hututuo/codex-token-bar/releases/latest) 下载最新 `.dmg`：
+
+1. 下载 `CodexTokenBar-v0.3.0-macos-arm64.dmg` 和 `SHA256SUMS-v0.3.0.txt`。
+2. 可选校验：
+
+```bash
+shasum -a 256 CodexTokenBar-v0.3.0-macos-arm64.dmg
+cat SHA256SUMS-v0.3.0.txt
+```
+
+3. 打开 DMG，把 `Codex Token Bar.app` 拖到 Applications。
+
+这个构建是 ad-hoc 签名，尚未 Apple notarize。首次打开如果提示“未知开发者”：系统设置 -> 隐私与安全 -> 找到 `Codex Token Bar` -> 点“仍要打开” -> 确认“打开”。
+
+备用一行安装方式：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
 ```
 
-The installer downloads the latest `.app.zip` release, unpacks it, installs the app into `/Applications` when writable or `~/Applications` otherwise, removes the common `com.apple.quarantine` flag, and opens the app.
+脚本会下载 GitHub Releases 里的 `CodexTokenBar.app.zip`，安装到可写的 `/Applications`，否则安装到 `~/Applications`，只移除该 App 上的 `com.apple.quarantine` 标记并打开应用。
 
-This helps avoid the common macOS "app is damaged and can't be opened" message caused by browser-downloaded unsigned apps being quarantined. It is not a full replacement for Apple Developer ID signing and notarization. Company MDM, security software, or stricter macOS policy can still block unsigned apps.
+## 更新
 
-## Update
+App 内置 Sparkle 更新检查。打开菜单栏 `Codex Token Bar -> 检查更新...` 即可检查 GitHub appcast 中的更新。
 
-Use the same one-line command to update. It always downloads the latest GitHub release and replaces the existing app:
+也可以重新运行一行安装命令，它会下载 latest release 并替换本地 App：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
 ```
 
-## Optional Codex Desktop Sidebar Patch
+## 可选：Codex Desktop 侧边栏补丁
 
-Some Codex Desktop builds load the project sidebar from only the first global recent-conversation page. If a workspace has many older local conversations outside that first page, the sidebar can show only a few conversations even though the local database still contains them.
+部分 Codex Desktop 版本会只从全局最近会话第一页生成项目侧边栏。如果某个 workspace 的很多本地会话不在第一页里，侧边栏就可能只显示几条对话，但本地数据库其实还在。
 
-Codex Token Bar includes an optional local hot patch for the installed Codex Desktop app:
+Codex Token Bar 附带一个可选的本机热补丁脚本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- install
 ```
 
-Check patch status:
+查看状态：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- status
 ```
 
-Rollback to the latest backup:
+回滚到最近一次备份：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- rollback
 ```
 
-The patch backs up `app.asar` and the original code signature under `~/Library/Application Support/CodexTokenBar/codex-desktop-sidebar-patch/backups/`, rewrites the Desktop renderer bundle locally, ad-hoc re-signs `Codex.app`, then reopens Codex. It does not modify `~/.codex` data. Future official Codex updates may overwrite the patch.
+脚本会备份 `app.asar` 和原始签名，本地改写 Codex Desktop renderer bundle，重新 ad-hoc 签名 `Codex.app` 并重新打开。它不会修改 `~/.codex` 数据。后续官方 Codex 更新可能会覆盖这个补丁。
 
-## What It Does
+## 数据源
 
-- Auto-detects local Codex data from a saved directory, `CODEX_HOME`, `~/.codex`, `~/.config/codex`, or one-level home-directory candidates.
-- Reads local Codex `token_count` events from `sessions/**/*.jsonl`.
-- Summarizes token usage, calls, streaks, peak usage, and thread count.
-- Shows the active data source in the header and provides a fallback directory picker.
-- Shows a profile-style yearly heatmap with nearest-cell hover details.
-- Heatmap modes use clear metrics: daily totals, calendar-week totals, or cumulative totals through the selected day.
-- Tracks live all-session Codex output speed from local stream logs, with a compact drill-down row for a selected session.
-- Offers a lightweight floating live-rate panel with total tok/s, lifetime tokens, today's tokens, and today's request count.
-- Supports a precise `o200k_base` token-counting toggle for live stream deltas, with a calibrated lightweight estimator as the default.
-- Shows recent 24-hour token and request activity at 30-minute granularity, with hover details for each time point.
-- Refreshes automatically every minute and also provides a manual refresh button.
-- Exports a shareable PNG snapshot and CSV summary.
-
-## Releases
-
-Version notes and downloadable app zips live on the [GitHub Releases page](https://github.com/hututuo/codex-token-bar/releases).
-
-## Privacy
-
-The MVP reads local files only. It does not upload logs, prompts, outputs, or account data.
-
-## Data Sources
-
-The app treats a Codex Home directory as a folder containing:
+应用会把包含以下内容的目录视为 Codex Home：
 
 ```text
 sessions/
 state_5.sqlite
 ```
 
-`sessions/` is used for precise token-count events. `state_5.sqlite` is used as fallback metadata when available.
+`sessions/` 用于精确 token_count、缓存命中率和会话轮次统计。`state_5.sqlite` 在可用时用于补充会话元数据。账号额度通过本地 Codex 账户接口读取，并只把轻量额度百分比历史写入 `~/Library/Application Support/CodexTokenBar/quota-history.sqlite`。
 
-## Run
-
-For contributors who want to run from source:
+## 从源码运行
 
 ```bash
 brew install git-lfs
@@ -116,22 +116,146 @@ scripts/prepare_tiktoken_lfs.sh
 swift run CodexTokenBar
 ```
 
-`git-lfs` is needed because the exact `o200k_base` tokenizer uses a binary Swift FFI package. The prepare script fetches only the macOS binary slice needed for this app. If the tokenizer cannot load at runtime, the app falls back to a lightweight calibrated estimator.
+精确 `o200k_base` tokenizer 依赖一个 Swift 二进制 FFI 包。准备脚本只会获取此应用需要的 macOS binary slice。如果 tokenizer 运行时不可用，应用会回退到轻量校准估算。
 
-## Package A Local App
+## 本地打包
+
+调试包：
+
+```bash
+scripts/package_app.sh debug
+```
+
+发布包：
+
+```bash
+SPARKLE_PRIVATE_KEY_FILE="$HOME/.config/codex-token-bar/sparkle-ed25519-private.key" \
+  scripts/build_release.sh v0.3.0
+```
+
+发布脚本会生成 `.app`、DMG、Sparkle zip、兼容安装 zip、`SHA256SUMS` 和 `appcast.xml`。私钥文件不要提交到 Git。
+
+## License
+
+MIT
+
+---
+
+## English
+
+Codex Token Bar is a local-first macOS SwiftUI app for reading local Codex logs and showing token usage, live output speed, cache hit rates, and account quota pace.
+
+<p align="center">
+  <img src="Assets/DashboardPreview.png" alt="Codex Token Bar dashboard screenshot" width="100%">
+</p>
+
+<p align="center">
+  <img src="Assets/FloatingPanelPreview.png" alt="Floating live token-rate panel" width="420">
+</p>
+
+## Highlights
+
+- Live all-session token speed with a compact floating panel, opacity, scaling, and session drill-down.
+- Yearly token heatmap, 5-minute recent activity chart, cache hit-rate curve, and cache hit ranking.
+- 5h / 7d account quota display with lightweight local history and compact pace hints.
+- Session disappearance repair wizard with scan, backup, repair, verify, and rollback list.
+- Local-first: reads local `~/.codex` data and does not upload prompts, outputs, logs, or quota data.
+- Sparkle update checking from `Codex Token Bar -> Check for Updates...`.
+
+## Why
+
+Codex already writes useful local usage data, but it is hard to see the current speed, daily burn, cache behavior, and quota pace at a glance. Codex Token Bar turns those local files into a small dashboard and an unobtrusive floating meter.
+
+## Installation
+
+Download the latest `.dmg` from [GitHub Releases](https://github.com/hututuo/codex-token-bar/releases/latest):
+
+1. Download `CodexTokenBar-v0.3.0-macos-arm64.dmg` and `SHA256SUMS-v0.3.0.txt`.
+2. Optionally verify:
+
+```bash
+shasum -a 256 CodexTokenBar-v0.3.0-macos-arm64.dmg
+cat SHA256SUMS-v0.3.0.txt
+```
+
+3. Open the DMG and drag `Codex Token Bar.app` to Applications.
+
+This build is ad-hoc signed and is not Apple notarized. macOS may show an "unidentified developer" warning on first launch. Download only from the official release page and verify the SHA256 checksum before opening.
+
+Backup install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/install.sh | bash
+```
+
+The script downloads the official `CodexTokenBar.app.zip` release asset, installs to `/Applications` when writable or `~/Applications` otherwise, removes quarantine only from the installed app, and opens it.
+
+## Update
+
+The app includes Sparkle update checking. Use `Codex Token Bar -> Check for Updates...` from the macOS app menu.
+
+You can also re-run the backup install command to replace the app with the latest GitHub release.
+
+## Optional Codex Desktop Sidebar Patch
+
+Some Codex Desktop builds populate a project sidebar from only the first global recent-conversation page. Codex Token Bar includes an optional local hot patch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- install
+```
+
+Status:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- status
+```
+
+Rollback:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hututuo/codex-token-bar/main/scripts/patch_codex_desktop_sidebar.sh | bash -s -- rollback
+```
+
+The patch backs up `app.asar` and the original signature, rewrites the Codex Desktop renderer bundle locally, ad-hoc re-signs `Codex.app`, and reopens Codex. It does not modify `~/.codex` data.
+
+## Data Sources
+
+The app treats a folder with the following entries as Codex Home:
+
+```text
+sessions/
+state_5.sqlite
+```
+
+`sessions/` powers precise token_count, cache hit-rate, and turn-level statistics. `state_5.sqlite` supplements session metadata. Account quota history stores only lightweight percentage samples in `~/Library/Application Support/CodexTokenBar/quota-history.sqlite`.
+
+## Run From Source
 
 ```bash
 brew install git-lfs
 git lfs install
-chmod +x scripts/package_app.sh
+scripts/prepare_tiktoken_lfs.sh
+swift run CodexTokenBar
+```
+
+The exact `o200k_base` tokenizer uses a binary Swift FFI package. If it cannot load, the app falls back to a calibrated lightweight estimator.
+
+## Package Locally
+
+Debug app:
+
+```bash
 scripts/package_app.sh debug
 ```
 
-Debug packaging automatically quits the previous local debug app and opens the newly built app. Set `CODEX_TOKEN_BAR_NO_OPEN=1` if you only want to package it.
+Release assets:
 
-## Notes
+```bash
+SPARKLE_PRIVATE_KEY_FILE="$HOME/.config/codex-token-bar/sparkle-ed25519-private.key" \
+  scripts/build_release.sh v0.3.0
+```
 
-This project intentionally starts as a Swift Package so contributors can build it without an Xcode project. A signed `.app` wrapper can be added later.
+The release script produces the app bundle, DMG, Sparkle zip, compatibility zip, `SHA256SUMS`, and `appcast.xml`. Never commit the private key file.
 
 ## License
 
