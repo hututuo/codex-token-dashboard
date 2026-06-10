@@ -72,7 +72,6 @@ struct LiveRateView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(AppTheme.border, lineWidth: 1)
         )
-        .shadow(color: AppTheme.shadow, radius: 18, y: 10)
     }
 }
 

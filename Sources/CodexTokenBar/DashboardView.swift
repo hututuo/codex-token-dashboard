@@ -247,12 +247,12 @@ private struct InitialLoadingOverlay: View {
 
     var body: some View {
         ZStack {
-            MacVisualEffect(material: .windowBackground, blendingMode: .withinWindow)
-                .opacity(0.72)
+            AppTheme.pageBackground
+                .opacity(0.82)
                 .ignoresSafeArea()
 
             Color.black
-                .opacity(0.10)
+                .opacity(0.06)
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
@@ -282,27 +282,7 @@ private struct InitialLoadingOverlay: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(AppTheme.border, lineWidth: 1)
             )
-            .shadow(color: AppTheme.shadow, radius: 24, y: 14)
         }
-    }
-}
-
-private struct MacVisualEffect: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
     }
 }
 
@@ -501,7 +481,6 @@ struct StatStrip: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(AppTheme.border, lineWidth: 1)
         )
-        .shadow(color: AppTheme.shadow, radius: 18, y: 10)
         .frame(maxWidth: 980)
     }
 
@@ -591,7 +570,6 @@ struct ActivityModeSelector: View {
         if selectedMode == mode {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(AppTheme.accentBlue.opacity(mode.isSpecial ? 0.13 : 0.18))
-                .shadow(color: AppTheme.shadow, radius: 3, y: 1)
         } else {
             Color.clear
         }
@@ -1364,7 +1342,6 @@ struct RecentUsageChart: View {
 
                     linePath(points: plotData.tokenPoints)
                         .stroke(AppTheme.accentBlue, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
-                        .shadow(color: AppTheme.accentBlue.opacity(0.18), radius: 5, y: 4)
 
                     linePath(points: plotData.callPoints)
                         .stroke(AppTheme.accentOrange, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
@@ -1372,7 +1349,6 @@ struct RecentUsageChart: View {
                     if preparedData.hasCacheCalls {
                         linePath(points: plotData.cachePoints)
                             .stroke(AppTheme.accentCyan, style: StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round, dash: [5, 5]))
-                            .shadow(color: AppTheme.accentCyan.opacity(0.16), radius: 4, y: 3)
                     }
 
                     if let activeIndex {
@@ -1599,7 +1575,6 @@ struct ChartHoverBubble: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(AppTheme.borderStrong, lineWidth: 1)
         )
-        .shadow(color: AppTheme.shadow, radius: 12, y: 7)
     }
 
     private var average: Int {
