@@ -38,7 +38,7 @@ struct ProviderSyncPage: View {
                     VStack(alignment: .leading, spacing: 12) {
                         ProviderSyncView(store: store, dataSource: dataSource)
 
-                        Text("建议退出 Codex Desktop 后执行同步；运行中的 Codex 可能会重新写回历史索引。所有同步都会先创建完整备份，可在本页回滚最近一次备份。")
+                        Text("建议退出 Codex Desktop 后执行同步；运行中的 Codex 可能会重新写回历史索引。所有同步都会先创建完整备份，可在本页备份列表选择回滚。")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -94,7 +94,7 @@ struct ProviderSyncView: View {
                     number: 1,
                     title: "扫描现状",
                     subtitle: scanSummary,
-                    status: scanStatus,
+                    status: scanStepStatus,
                     accent: AppTheme.accentCyan,
                     buttonTitle: "重新扫描",
                     systemImage: "magnifyingglass",
@@ -107,7 +107,7 @@ struct ProviderSyncView: View {
                     number: 2,
                     title: "创建备份",
                     subtitle: "先备份 config、SQLite、索引和会话 JSONL，后面不满意可以回滚。",
-                    status: store.snapshot.lastBackupPath == nil ? "建议先做" : "已有备份",
+                    status: backupStepStatus,
                     accent: AppTheme.accentBlue,
                     buttonTitle: "只创建备份",
                     systemImage: "externaldrive.badge.timemachine",
@@ -120,7 +120,7 @@ struct ProviderSyncView: View {
                     number: 3,
                     title: "一键修复",
                     subtitle: "同步 provider，处理异常时间戳，并补齐索引和前端工作区状态。",
-                    status: repairStatus,
+                    status: repairStepStatus,
                     accent: AppTheme.accentOrange,
                     buttonTitle: store.dryRunOnly ? "演练修复" : "修复历史",
                     systemImage: "arrow.triangle.2.circlepath",
@@ -135,20 +135,23 @@ struct ProviderSyncView: View {
                     number: 4,
                     title: "验证结果",
                     subtitle: "修复后检查 provider、数据库、索引和工作区状态是否都正常。",
-                    status: store.snapshot.sqliteIntegrity == "ok" ? "可验证" : "先扫描",
+                    status: verifyStepStatus,
                     accent: AppTheme.accentCyan,
                     buttonTitle: "验证结果",
                     systemImage: "checkmark.seal",
-                    secondaryTitle: "回滚备份",
-                    secondarySystemImage: "clock.arrow.circlepath",
-                    secondaryRole: .destructive,
                     disabled: store.snapshot.isWorking || dataSource == nil
                 ) {
                     store.verify(dataSource: dataSource)
-                } secondaryAction: {
-                    store.rollbackLatest(dataSource: dataSource)
                 }
             }
+
+            ProviderSyncBackupList(
+                backups: store.snapshot.backupRecords,
+                disabled: store.snapshot.isWorking || dataSource == nil,
+                onRollback: { backup in
+                    store.rollback(dataSource: dataSource, backup: backup)
+                }
+            )
 
             ProviderSyncAdvancedPanel(store: store, backupPath: store.snapshot.lastBackupPath)
 
@@ -171,24 +174,41 @@ struct ProviderSyncView: View {
         }
     }
 
-    private var repairStatus: String {
-        if store.snapshot.hasMixedProviders ||
-            store.snapshot.sqliteRowsToRepair > 0 ||
-            store.snapshot.workspaceOrderMissing > 0 {
-            return "待修复"
-        }
-        if store.snapshot.providerSource == "等待扫描" {
-            return "待扫描"
-        }
-        return "看起来正常"
-    }
-
-    private var scanStatus: String {
-        if store.snapshot.providerSource == "等待扫描" {
-            return "未扫描"
+    private var scanStepStatus: ProviderSyncStepStatus {
+        if !store.hasScanned && store.snapshot.providerSource == "等待扫描" {
+            return .pending("未运行", "等待扫描")
         }
         let total = scanIssueCount
-        return total == 0 ? "未发现不一致" : "发现 \(total) 处"
+        return total == 0
+            ? .success("已扫描", "未发现不一致")
+            : .failure("已扫描", "发现 \(total) 处不一致")
+    }
+
+    private var backupStepStatus: ProviderSyncStepStatus {
+        if store.hasBackedUp || store.snapshot.lastBackupPath != nil {
+            return .success("已运行", "已备份")
+        }
+        return .pending("未运行", "未备份")
+    }
+
+    private var repairStepStatus: ProviderSyncStepStatus {
+        if store.hasRepaired || store.snapshot.changedSessionFiles > 0 || store.snapshot.sqliteRowsChanged > 0 {
+            return .success("已运行", "已进行修复")
+        }
+        return .pending("未运行", "未进行修复")
+    }
+
+    private var verifyStepStatus: ProviderSyncStepStatus {
+        guard store.hasVerified || store.snapshot.status.hasPrefix("验证") else {
+            return .pending("未运行", "未验证")
+        }
+        return verificationIssueCount == 0
+            ? .success("已运行", "已验证")
+            : .failure("已运行", "已验证，仍有 \(verificationIssueCount) 处")
+    }
+
+    private var verificationIssueCount: Int {
+        scanIssueCount + (store.snapshot.sqliteIntegrity == "ok" ? 0 : 1)
     }
 
     private var scanSummary: String {
@@ -251,11 +271,30 @@ struct ProviderSyncView: View {
     }
 }
 
+private struct ProviderSyncStepStatus {
+    let label: String
+    let text: String
+    let systemImage: String
+    let color: Color
+
+    static func success(_ label: String, _ text: String) -> ProviderSyncStepStatus {
+        ProviderSyncStepStatus(label: label, text: text, systemImage: "checkmark.circle.fill", color: AppTheme.accentCyan)
+    }
+
+    static func failure(_ label: String, _ text: String) -> ProviderSyncStepStatus {
+        ProviderSyncStepStatus(label: label, text: text, systemImage: "xmark.circle.fill", color: AppTheme.accentOrange)
+    }
+
+    static func pending(_ label: String, _ text: String) -> ProviderSyncStepStatus {
+        ProviderSyncStepStatus(label: label, text: text, systemImage: "circle.dashed", color: .secondary)
+    }
+}
+
 private struct ProviderSyncStepCard: View {
     let number: Int
     let title: String
     let subtitle: String
-    let status: String
+    let status: ProviderSyncStepStatus
     let accent: Color
     let buttonTitle: String
     let systemImage: String
@@ -283,10 +322,7 @@ private struct ProviderSyncStepCard: View {
                     Text(title)
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
-                    Text(status)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
+                    ProviderSyncStepStatusPill(status: status, accent: accent)
                 }
             }
 
@@ -354,6 +390,180 @@ private struct ProviderSyncStepCard: View {
             }
             .buttonStyle(.bordered)
         }
+    }
+}
+
+private struct ProviderSyncStepStatusPill: View {
+    let status: ProviderSyncStepStatus
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Label {
+                Text(status.label)
+            } icon: {
+                Image(systemName: status.systemImage)
+            }
+            .labelStyle(.titleAndIcon)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(status.color)
+
+            Rectangle()
+                .fill(AppTheme.border)
+                .frame(width: 1, height: 10)
+
+            Text(status.text)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(status.color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            Capsule()
+                .fill(accent.opacity(0.10))
+        )
+        .overlay(
+            Capsule()
+                .stroke(accent.opacity(0.24), lineWidth: 1)
+        )
+    }
+}
+
+private struct ProviderSyncBackupList: View {
+    let backups: [ProviderSyncBackupRecord]
+    let disabled: Bool
+    let onRollback: (ProviderSyncBackupRecord) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("回滚备份")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(backups.isEmpty ? "还没有可回滚的备份" : "最近 \(backups.count) 次备份，可选择具体时间回滚")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            if backups.isEmpty {
+                HStack(spacing: 7) {
+                    Image(systemName: "tray")
+                        .foregroundStyle(.secondary)
+                    Text("执行第 2 步或第 3 步后，这里会出现备份列表。")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(AppTheme.panelBackgroundAlt)
+                )
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 6) {
+                        ForEach(backups) { backup in
+                            ProviderSyncBackupRow(
+                                backup: backup,
+                                disabled: disabled,
+                                onRollback: {
+                                    onRollback(backup)
+                                }
+                            )
+                        }
+                    }
+                    .padding(.trailing, 4)
+                }
+                .frame(maxHeight: 174)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.insetBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct ProviderSyncBackupRow: View {
+    let backup: ProviderSyncBackupRecord
+    let disabled: Bool
+    let onRollback: () -> Void
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text("第 \(backup.sequence) 次")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.accentBlue)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.accentBlue.opacity(0.12))
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formattedDate)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text("\(backup.targetProvider) · \(backup.sessionFileCount) 个会话文件 · \(backup.name)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: backup.path)])
+            } label: {
+                Label("打开", systemImage: "folder")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .font(.system(size: 11, weight: .medium))
+            .disabled(disabled)
+
+            Button(role: .destructive) {
+                onRollback()
+            } label: {
+                Label("回滚", systemImage: "clock.arrow.circlepath")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .font(.system(size: 11, weight: .medium))
+            .disabled(disabled)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(AppTheme.panelBackgroundAlt)
+        )
+    }
+
+    private var formattedDate: String {
+        if backup.createdAt == .distantPast {
+            return "时间未知"
+        }
+        return backup.createdAt.formatted(
+            .dateTime
+                .year()
+                .month(.twoDigits)
+                .day(.twoDigits)
+                .hour(.twoDigits(amPM: .omitted))
+                .minute(.twoDigits)
+                .second(.twoDigits)
+        )
     }
 }
 

@@ -44,6 +44,16 @@ struct ProviderSyncVisibilitySummary: Equatable {
     var workspaces: [ProviderSyncWorkspaceCount] = []
 }
 
+struct ProviderSyncBackupRecord: Identifiable, Equatable {
+    var id: String { path }
+    let path: String
+    let name: String
+    let createdAt: Date
+    let sequence: Int
+    let targetProvider: String
+    let sessionFileCount: Int
+}
+
 struct ProviderSyncSnapshot: Equatable {
     var codexHome: String = "~/.codex"
     var detectedProvider: String = "openai"
@@ -63,6 +73,7 @@ struct ProviderSyncSnapshot: Equatable {
     var visibilitySummary = ProviderSyncVisibilitySummary()
     var codexRunning: Bool = false
     var lastBackupPath: String?
+    var backupRecords: [ProviderSyncBackupRecord] = []
     var status: String = "扫描后可同步历史 provider"
     var isWorking: Bool = false
 
@@ -85,17 +96,21 @@ final class ProviderSyncStore: ObservableObject {
     @Published var includeArchivedSessions = true
     @Published var dryRunOnly = false
     @Published var manualProvider = ""
+    @Published private(set) var hasScanned = false
+    @Published private(set) var hasBackedUp = false
+    @Published private(set) var hasRepaired = false
+    @Published private(set) var hasVerified = false
 
     private var task: Task<Void, Never>?
 
     func scan(dataSource: CodexDataSource?) {
-        run(dataSource: dataSource) { engine, source in
+        run(dataSource: dataSource, operationKind: .scan) { engine, source in
             try engine.scan(codexHome: source.codexHome, includeArchivedSessions: self.includeArchivedSessions)
         }
     }
 
     func sync(dataSource: CodexDataSource?) {
-        run(dataSource: dataSource) { engine, source in
+        run(dataSource: dataSource, operationKind: self.dryRunOnly ? .backup : .sync) { engine, source in
             let targetProvider = self.effectiveTargetProvider()
             return try engine.sync(
                 codexHome: source.codexHome,
@@ -107,7 +122,7 @@ final class ProviderSyncStore: ObservableObject {
     }
 
     func backup(dataSource: CodexDataSource?) {
-        run(dataSource: dataSource) { engine, source in
+        run(dataSource: dataSource, operationKind: .backup) { engine, source in
             let targetProvider = self.effectiveTargetProvider()
             return try engine.sync(
                 codexHome: source.codexHome,
@@ -119,7 +134,7 @@ final class ProviderSyncStore: ObservableObject {
     }
 
     func verify(dataSource: CodexDataSource?) {
-        run(dataSource: dataSource) { engine, source in
+        run(dataSource: dataSource, operationKind: .verify) { engine, source in
             let targetProvider = self.effectiveTargetProvider()
             return try engine.verify(
                 codexHome: source.codexHome,
@@ -130,8 +145,14 @@ final class ProviderSyncStore: ObservableObject {
     }
 
     func rollbackLatest(dataSource: CodexDataSource?) {
-        run(dataSource: dataSource) { engine, source in
+        run(dataSource: dataSource, operationKind: .rollback) { engine, source in
             try engine.rollbackLatest(codexHome: source.codexHome)
+        }
+    }
+
+    func rollback(dataSource: CodexDataSource?, backup: ProviderSyncBackupRecord) {
+        run(dataSource: dataSource, operationKind: .rollback) { engine, source in
+            try engine.rollback(codexHome: source.codexHome, backupPath: backup.path)
         }
     }
 
@@ -140,8 +161,17 @@ final class ProviderSyncStore: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private enum OperationKind {
+        case scan
+        case backup
+        case sync
+        case verify
+        case rollback
+    }
+
     private func run(
         dataSource: CodexDataSource?,
+        operationKind: OperationKind,
         operation: @escaping (ProviderSyncEngine, CodexDataSource) throws -> ProviderSyncSnapshot
     ) {
         task?.cancel()
@@ -169,6 +199,7 @@ final class ProviderSyncStore: ObservableObject {
                 switch result {
                 case .success(let next):
                     snapshot = next
+                    markCompleted(operationKind)
                 case .failure(let error):
                     var failed = snapshot
                     failed.isWorking = false
@@ -176,6 +207,25 @@ final class ProviderSyncStore: ObservableObject {
                     snapshot = failed
                 }
             }
+        }
+    }
+
+    private func markCompleted(_ operationKind: OperationKind) {
+        switch operationKind {
+        case .scan:
+            hasScanned = true
+        case .backup:
+            hasScanned = true
+            hasBackedUp = true
+        case .sync:
+            hasScanned = true
+            hasBackedUp = true
+            hasRepaired = true
+        case .verify:
+            hasScanned = true
+            hasVerified = true
+        case .rollback:
+            hasScanned = true
         }
     }
 }
@@ -327,9 +377,17 @@ private final class ProviderSyncEngine {
 
     func rollbackLatest(codexHome: URL) throws -> ProviderSyncSnapshot {
         let backup = try latestBackupDirectory(for: codexHome)
+        return try rollback(codexHome: codexHome, backup: backup, status: "已从最近备份回滚")
+    }
+
+    func rollback(codexHome: URL, backupPath: String) throws -> ProviderSyncSnapshot {
+        try rollback(codexHome: codexHome, backup: URL(fileURLWithPath: backupPath), status: "已从所选备份回滚")
+    }
+
+    private func rollback(codexHome: URL, backup: URL, status: String) throws -> ProviderSyncSnapshot {
         try restoreBackup(backup, codexHome: codexHome)
         let report = try makeReport(codexHome: codexHome, includeArchivedSessions: true, targetProviderOverride: nil)
-        var next = snapshot(from: report, status: "已从最近备份回滚")
+        var next = snapshot(from: report, status: status)
         next.lastBackupPath = backup.path
         return next
     }
@@ -409,6 +467,7 @@ private final class ProviderSyncEngine {
             workspaceIssues: report.workspaceIssues,
             visibilitySummary: report.visibilitySummary,
             codexRunning: report.codexRunning,
+            backupRecords: backupRecords(for: report.codexHome),
             status: report.codexRunning ? "\(status)，建议退出 Codex 后执行同步" : status,
             isWorking: false
         )
@@ -1315,6 +1374,34 @@ private final class ProviderSyncEngine {
     }
 
     private func latestBackupDirectory(for codexHome: URL) throws -> URL {
+        guard let latest = backupDirectories(for: codexHome).first else {
+            throw NSError(domain: "CodexTokenBar", code: 404, userInfo: [NSLocalizedDescriptionKey: "当前 Codex Home 没有可回滚的备份"])
+        }
+        return latest
+    }
+
+    private func backupRecords(for codexHome: URL) -> [ProviderSyncBackupRecord] {
+        let sortedOldestFirst = backupDirectories(for: codexHome).reversed()
+        return sortedOldestFirst.enumerated().map { index, backup in
+            let metadata = backupMetadata(backup)
+            return ProviderSyncBackupRecord(
+                path: backup.path,
+                name: backup.lastPathComponent,
+                createdAt: metadata.createdAt ?? modificationDate(of: backup) ?? .distantPast,
+                sequence: index + 1,
+                targetProvider: metadata.targetProvider ?? "未知 provider",
+                sessionFileCount: metadata.sessionFileCount ?? 0
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt > rhs.createdAt
+            }
+            return lhs.sequence > rhs.sequence
+        }
+    }
+
+    private func backupDirectories(for codexHome: URL) -> [URL] {
         let root = fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/CodexHistoryRepair/backups", isDirectory: true)
         let backups = (try? fileManager.contentsOfDirectory(
@@ -1322,17 +1409,26 @@ private final class ProviderSyncEngine {
             includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
             options: [.skipsHiddenFiles]
         )) ?? []
-        let matchingBackups = backups
+        return backups
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             .filter { backupMatchesCodexHome($0, codexHome: codexHome) }
-        guard let latest = matchingBackups.max(by: { lhs, rhs in
-            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return lhsDate < rhsDate
-        }) else {
-            throw NSError(domain: "CodexTokenBar", code: 404, userInfo: [NSLocalizedDescriptionKey: "当前 Codex Home 没有可回滚的备份"])
+            .sorted { lhs, rhs in
+                let lhsDate = backupMetadata(lhs).createdAt ?? modificationDate(of: lhs) ?? .distantPast
+                let rhsDate = backupMetadata(rhs).createdAt ?? modificationDate(of: rhs) ?? .distantPast
+                return lhsDate > rhsDate
+            }
+    }
+
+    private func backupMetadata(_ backup: URL) -> (createdAt: Date?, targetProvider: String?, sessionFileCount: Int?) {
+        let manifest = backup.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: manifest),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (nil, nil, nil)
         }
-        return latest
+        let createdAt = (object["created_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+        let targetProvider = object["target_provider"] as? String
+        let sessionFileCount = object["session_file_count"] as? Int
+        return (createdAt, targetProvider, sessionFileCount)
     }
 
     private func backupMatchesCodexHome(_ backup: URL, codexHome: URL) -> Bool {
