@@ -173,7 +173,8 @@ final class LiveRateMonitor: ObservableObject {
     private var dataSource: CodexDataSource?
     private let windowSeconds: TimeInterval = 2.5
     private let fastPollInterval: TimeInterval = 0.25
-    private let idlePollInterval: TimeInterval = 0.25
+    private let idlePollInterval: TimeInterval = 1.0
+    private let idleFallbackPollInterval: TimeInterval = 2.0
     private let activeFastPollHoldSeconds: TimeInterval = 10.0
     private let snapshotPublishInterval: TimeInterval = 0.25
     private let startupBackfillSeconds: TimeInterval = 4.0
@@ -181,6 +182,8 @@ final class LiveRateMonitor: ObservableObject {
     private var timer: Timer?
     private var logsDirectorySource: DispatchSourceFileSystemObject?
     private var watchedLogsDirectory = ""
+    private var cachedLogsDatabasePath = ""
+    private var cachedLogsDirectoryPath = ""
     private var logChangePending = false
     private var fastPollUntil: TimeInterval = 0
     private var threadID = ""
@@ -189,6 +192,8 @@ final class LiveRateMonitor: ObservableObject {
     private var lastLogsSignature: LogStoreSignature?
     private var lastPollProcessedRows = false
     private var lastSnapshotPublishAt: TimeInterval = 0
+    private var lastFallbackPollAt: TimeInterval = 0
+    private var logReader: LogDatabaseReader?
     private var selectedRate = RateAccumulator(resetsOnNewItem: false)
     private var totalRate = RateAccumulator(resetsOnNewItem: false)
     private var rolloutOffsets: [String: UInt64] = [:]
@@ -205,6 +210,97 @@ final class LiveRateMonitor: ObservableObject {
         let databaseModifiedAt: TimeInterval
         let walSize: UInt64
         let walModifiedAt: TimeInterval
+    }
+
+    private final class LogDatabaseReader: @unchecked Sendable {
+        let path: String
+        private let lock = NSLock()
+        private var database: OpaquePointer?
+
+        init(path: String) {
+            self.path = path
+        }
+
+        deinit {
+            lock.lock()
+            if let database {
+                sqlite3_close(database)
+            }
+            lock.unlock()
+        }
+
+        func globalLogRows(afterID: Int) throws -> [LogRow] {
+            try logRows(sql: LiveRateMonitor.globalLogRowsSQL(afterID: afterID))
+        }
+
+        func globalLogRows(since timestamp: TimeInterval) throws -> [LogRow] {
+            try logRows(sql: LiveRateMonitor.globalLogRowsSQL(since: timestamp))
+        }
+
+        private func logRows(sql: String) throws -> [LogRow] {
+            try rows(sql: sql) { statement in
+                LogRow(
+                    id: LiveRateMonitor.sqliteInt(statement, 0),
+                    threadID: LiveRateMonitor.sqliteText(statement, 1),
+                    ts: LiveRateMonitor.sqliteInt(statement, 2),
+                    tsNanos: LiveRateMonitor.sqliteInt(statement, 3),
+                    target: LiveRateMonitor.sqliteText(statement, 4) ?? "",
+                    feedbackLogBody: LiveRateMonitor.sqliteText(statement, 5) ?? ""
+                )
+            }
+        }
+
+        private func rows<T>(sql: String, map: (OpaquePointer?) throws -> T) throws -> [T] {
+            lock.lock()
+            defer { lock.unlock() }
+
+            let database = try databaseHandle()
+            var statement: OpaquePointer?
+            let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+            guard prepareStatus == SQLITE_OK, let statement else {
+                throw NSError(
+                    domain: "CodexTokenBar",
+                    code: Int(prepareStatus),
+                    userInfo: [NSLocalizedDescriptionKey: LiveRateMonitor.sqliteErrorMessage(database)]
+                )
+            }
+            defer { sqlite3_finalize(statement) }
+
+            var rows: [T] = []
+            while true {
+                let stepStatus = sqlite3_step(statement)
+                if stepStatus == SQLITE_ROW {
+                    rows.append(try map(statement))
+                } else if stepStatus == SQLITE_DONE {
+                    return rows
+                } else {
+                    throw NSError(
+                        domain: "CodexTokenBar",
+                        code: Int(stepStatus),
+                        userInfo: [NSLocalizedDescriptionKey: LiveRateMonitor.sqliteErrorMessage(database)]
+                    )
+                }
+            }
+        }
+
+        private func databaseHandle() throws -> OpaquePointer {
+            if let database {
+                return database
+            }
+
+            var opened: OpaquePointer?
+            let status = sqlite3_open_v2(path, &opened, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil)
+            guard status == SQLITE_OK, let opened else {
+                let message = opened.map { LiveRateMonitor.sqliteErrorMessage($0) } ?? "Unable to open SQLite database"
+                if let opened {
+                    sqlite3_close(opened)
+                }
+                throw NSError(domain: "CodexTokenBar", code: Int(status), userInfo: [NSLocalizedDescriptionKey: message])
+            }
+            sqlite3_busy_timeout(opened, 100)
+            database = opened
+            return opened
+        }
     }
 
     init(preciseTokenCountingEnabled: Bool = LiveRateMonitor.defaultPreciseTokenCountingEnabled()) {
@@ -242,7 +338,11 @@ final class LiveRateMonitor: ObservableObject {
     }
 
     private func nextPollInterval() -> TimeInterval {
-        fastPollInterval
+        let now = Date().timeIntervalSince1970
+        if logChangePending || now < fastPollUntil || hasActiveRollingWindow(now: now) {
+            return fastPollInterval
+        }
+        return idlePollInterval
     }
 
     func reset() {
@@ -277,9 +377,9 @@ final class LiveRateMonitor: ObservableObject {
             snapshot.status = "未找到 Codex 数据目录"
             return
         }
-        dataSource = source
-        configureLogWatcher(for: source)
-        lastLogsSignature = Self.logStoreSignature(logsDB: source.logsDatabase.path)
+        setDataSource(source)
+        configureLogWatcher(logsDirectory: cachedLogsDirectoryPath)
+        lastLogsSignature = Self.logStoreSignature(logsDB: cachedLogsDatabasePath)
 
         do {
             let stateDB = source.stateDatabase.path
@@ -293,7 +393,7 @@ final class LiveRateMonitor: ObservableObject {
                 snapshot.status = "未找到活动会话"
                 return
             }
-            let logsDB = source.logsDatabase.path
+            let logsDB = cachedLogsDatabasePath
             lastGlobalLogID = try await Task.detached(priority: .utility) {
                 try Self.maxGlobalLogID(logsDB: logsDB)
             }.value
@@ -313,8 +413,9 @@ final class LiveRateMonitor: ObservableObject {
 
     private func backfillStartupRows(source: CodexDataSource, logsDB: String, since: TimeInterval) async {
         do {
+            let reader = logReader(for: logsDB)
             let rows = try await Task.detached(priority: .utility) {
-                try Self.globalLogRows(logsDB: logsDB, since: since)
+                try reader.globalLogRows(since: since)
             }.value
             guard !rows.isEmpty else { return }
             for row in rows {
@@ -323,7 +424,7 @@ final class LiveRateMonitor: ObservableObject {
             }
             extendFastPolling(from: Date().timeIntervalSince1970)
             updateSnapshots(now: Date().timeIntervalSince1970)
-            lastLogsSignature = Self.logStoreSignature(logsDB: source.logsDatabase.path)
+            lastLogsSignature = Self.logStoreSignature(logsDB: logsDB)
         } catch {
             snapshot.status = "启动回看日志失败：\(error.localizedDescription)"
         }
@@ -331,10 +432,10 @@ final class LiveRateMonitor: ObservableObject {
 
     private func switchToThread(_ id: String) async {
         guard let source = dataSource ?? resolver.resolve() else { return }
-        dataSource = source
-        configureLogWatcher(for: source)
+        setDataSource(source)
+        configureLogWatcher(logsDirectory: cachedLogsDirectoryPath)
         do {
-            let logsDB = source.logsDatabase.path
+            let logsDB = cachedLogsDatabasePath
             lastLogID = try await Task.detached(priority: .utility) {
                 try Self.maxLogID(logsDB: logsDB, threadID: id)
             }.value
@@ -358,26 +459,34 @@ final class LiveRateMonitor: ObservableObject {
     private func poll() async {
         lastPollProcessedRows = false
         guard let source = dataSource ?? resolver.resolve() else { return }
-        dataSource = source
-        configureLogWatcher(for: source)
+        setDataSource(source)
+        configureLogWatcher(logsDirectory: cachedLogsDirectoryPath)
         if threadID.isEmpty {
             await resetToLatestThread()
             return
         }
 
         do {
-            let logsDB = source.logsDatabase.path
-            let signature = Self.logStoreSignature(logsDB: logsDB)
+            let logsDB = cachedLogsDatabasePath
             let now = Date().timeIntervalSince1970
-            let signatureChanged = lastLogsSignature != signature
+            let shouldPollLogs = logChangePending
+                || now < fastPollUntil
+                || hasActiveRollingWindow(now: now)
+                || now - lastFallbackPollAt >= idleFallbackPollInterval
             logChangePending = false
-            if signatureChanged {
-                lastLogsSignature = signature
+
+            guard shouldPollLogs else {
+                updateSnapshots(now: now)
+                return
+            }
+            if now >= fastPollUntil {
+                lastFallbackPollAt = now
             }
 
             let currentGlobalLogID = lastGlobalLogID
+            let reader = logReader(for: logsDB)
             let globalRows = try await Task.detached(priority: .utility) {
-                try Self.globalLogRows(logsDB: logsDB, afterID: currentGlobalLogID)
+                try reader.globalLogRows(afterID: currentGlobalLogID)
             }.value
 
             guard !globalRows.isEmpty else {
@@ -398,9 +507,18 @@ final class LiveRateMonitor: ObservableObject {
         }
     }
 
-    private func configureLogWatcher(for source: CodexDataSource) {
-        let directory = source.logsDatabase.deletingLastPathComponent().path
-        guard watchedLogsDirectory != directory else { return }
+    private func setDataSource(_ source: CodexDataSource) {
+        guard dataSource != source || cachedLogsDatabasePath.isEmpty || cachedLogsDirectoryPath.isEmpty else {
+            return
+        }
+        dataSource = source
+        let homePath = source.codexHome.path as NSString
+        cachedLogsDatabasePath = homePath.appendingPathComponent("logs_2.sqlite")
+        cachedLogsDirectoryPath = (cachedLogsDatabasePath as NSString).deletingLastPathComponent
+    }
+
+    private func configureLogWatcher(logsDirectory directory: String) {
+        guard !directory.isEmpty, watchedLogsDirectory != directory else { return }
 
         logsDirectorySource?.cancel()
         logsDirectorySource = nil
@@ -427,6 +545,15 @@ final class LiveRateMonitor: ObservableObject {
         }
         logsDirectorySource = eventSource
         eventSource.resume()
+    }
+
+    private func logReader(for logsDB: String) -> LogDatabaseReader {
+        if let logReader, logReader.path == logsDB {
+            return logReader
+        }
+        let reader = LogDatabaseReader(path: logsDB)
+        logReader = reader
+        return reader
     }
 
     private func hasActiveRollingWindow(now: TimeInterval) -> Bool {
@@ -595,8 +722,8 @@ final class LiveRateMonitor: ObservableObject {
         updated.breakdown = breakdown
         updated.status = status
 
-        guard abs(snapshot.rollingTokensPerSecond - updated.rollingTokensPerSecond) > 0.01
-            || abs(snapshot.averageTokensPerSecond - updated.averageTokensPerSecond) > 0.01
+        guard Self.displayTenths(snapshot.rollingTokensPerSecond) != Self.displayTenths(updated.rollingTokensPerSecond)
+            || Self.displayTenths(snapshot.averageTokensPerSecond) != Self.displayTenths(updated.averageTokensPerSecond)
             || snapshot.outputTokens != updated.outputTokens
             || snapshot.outputCharacters != updated.outputCharacters
             || snapshot.breakdown != updated.breakdown
@@ -606,6 +733,10 @@ final class LiveRateMonitor: ObservableObject {
 
         updated.updatedAt = Date()
         return updated
+    }
+
+    nonisolated private static func displayTenths(_ value: Double) -> Int {
+        Int((value * 10).rounded(.toNearestOrAwayFromZero))
     }
 
     private func configureTotalSnapshot(source: CodexDataSource) {
@@ -995,7 +1126,15 @@ private extension LiveRateMonitor {
     }
 
     nonisolated static func globalLogRows(logsDB: String, afterID: Int) throws -> [LogRow] {
-        let sql = """
+        try sqliteLogRows(db: logsDB, sql: globalLogRowsSQL(afterID: afterID))
+    }
+
+    nonisolated static func globalLogRows(logsDB: String, since timestamp: TimeInterval) throws -> [LogRow] {
+        try sqliteLogRows(db: logsDB, sql: globalLogRowsSQL(since: timestamp))
+    }
+
+    nonisolated static func globalLogRowsSQL(afterID: Int) -> String {
+        """
         SELECT id, thread_id, ts, ts_nanos, target, feedback_log_body
         FROM logs
         WHERE id > \(afterID)
@@ -1017,12 +1156,11 @@ private extension LiveRateMonitor {
         ORDER BY id ASC
         LIMIT 2000;
         """
-        return try sqliteLogRows(db: logsDB, sql: sql)
     }
 
-    nonisolated static func globalLogRows(logsDB: String, since timestamp: TimeInterval) throws -> [LogRow] {
+    nonisolated static func globalLogRowsSQL(since timestamp: TimeInterval) -> String {
         let sinceSeconds = Int(timestamp.rounded(.down))
-        let sql = """
+        return """
         SELECT id, thread_id, ts, ts_nanos, target, feedback_log_body
         FROM logs
         WHERE ts >= \(sinceSeconds)
@@ -1044,7 +1182,6 @@ private extension LiveRateMonitor {
         ORDER BY id ASC
         LIMIT 2000;
         """
-        return try sqliteLogRows(db: logsDB, sql: sql)
     }
 
     nonisolated static func sqliteLogRows(db: String, sql: String) throws -> [LogRow] {

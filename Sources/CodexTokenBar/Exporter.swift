@@ -64,8 +64,15 @@ struct ExportSnapshotView: View {
                     onOpenProviderSync: {}
                 )
                 StatStrip(stats: snapshot.stats)
-                ActivitySection(dailyUsage: snapshot.dailyUsage, selectedMode: .constant(.daily))
-                RecentUsageChart(bins: snapshot.recentBins)
+                ActivitySection(
+                    dailyUsage: snapshot.dailyUsage,
+                    cacheDaily: snapshot.cacheUsage.daily,
+                    selectedMode: .constant(.daily)
+                )
+                RecentUsageChart(
+                    bins: snapshot.recentBins,
+                    cacheRecentBins: snapshot.cacheUsage.recentBins
+                )
             }
             .padding(54)
         }

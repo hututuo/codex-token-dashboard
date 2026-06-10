@@ -41,7 +41,7 @@ struct AccountQuotaStrip: View {
                 .padding(.leading, 10)
         }
         .padding(.leading, 12)
-        .padding(.trailing, 0)
+        .padding(.trailing, 12)
         .padding(.vertical, 7)
         .frame(maxWidth: 980, minHeight: 54)
         .background(
@@ -158,7 +158,7 @@ struct AccountQuotaPaceInsight: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
-        .frame(width: 245, alignment: .leading)
+        .frame(width: 232, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)

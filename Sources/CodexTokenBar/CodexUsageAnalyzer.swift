@@ -28,6 +28,8 @@ final class CodexUsageAnalyzer {
             let cachedInputTokens: Int
             let outputTokens: Int
             let reasoningOutputTokens: Int
+            let userPrompt: String
+            let assistantResponse: String
         }
 
         private let lock = NSLock()
@@ -70,7 +72,9 @@ final class CodexUsageAnalyzer {
                             inputTokens: event.inputTokens,
                             cachedInputTokens: event.cachedInputTokens,
                             outputTokens: event.outputTokens,
-                            reasoningOutputTokens: event.reasoningOutputTokens
+                            reasoningOutputTokens: event.reasoningOutputTokens,
+                            userPrompt: event.userPrompt,
+                            assistantResponse: event.assistantResponse
                         )
                     }
                 )
@@ -84,7 +88,7 @@ final class CodexUsageAnalyzer {
                     at: cacheURL.deletingLastPathComponent(),
                     withIntermediateDirectories: true
                 )
-                let cache = PersistentCache(version: 1, entries: entries)
+                let cache = PersistentCache(version: 2, entries: entries)
                 let data = try JSONEncoder().encode(cache)
                 try data.write(to: cacheURL, options: [.atomic])
             } catch {
@@ -104,7 +108,7 @@ final class CodexUsageAnalyzer {
             guard let cacheURL = Self.cacheURL,
                   let data = try? Data(contentsOf: cacheURL),
                   let cache = try? JSONDecoder().decode(PersistentCache.self, from: data),
-                  cache.version == 1 else {
+                  cache.version == 2 else {
                 return
             }
 
@@ -121,7 +125,9 @@ final class CodexUsageAnalyzer {
                             inputTokens: event.inputTokens,
                             cachedInputTokens: event.cachedInputTokens,
                             outputTokens: event.outputTokens,
-                            reasoningOutputTokens: event.reasoningOutputTokens
+                            reasoningOutputTokens: event.reasoningOutputTokens,
+                            userPrompt: event.userPrompt,
+                            assistantResponse: event.assistantResponse
                         )
                     }
                 )
@@ -149,6 +155,40 @@ final class CodexUsageAnalyzer {
         let totalThreads: Int
     }
 
+    private struct ThreadInfo {
+        let title: String
+        let updatedAt: Date?
+    }
+
+    private struct TokenCacheAccumulator {
+        var inputTokens = 0
+        var cachedInputTokens = 0
+        var outputTokens = 0
+        var reasoningOutputTokens = 0
+        var totalTokens = 0
+        var calls = 0
+
+        mutating func add(_ event: TokenEvent) {
+            inputTokens += event.inputTokens
+            cachedInputTokens += min(event.cachedInputTokens, event.inputTokens)
+            outputTokens += event.outputTokens
+            reasoningOutputTokens += event.reasoningOutputTokens
+            totalTokens += event.tokens
+            calls += 1
+        }
+
+        var breakdown: TokenCacheBreakdown {
+            TokenCacheBreakdown(
+                inputTokens: inputTokens,
+                cachedInputTokens: cachedInputTokens,
+                outputTokens: outputTokens,
+                reasoningOutputTokens: reasoningOutputTokens,
+                totalTokens: totalTokens,
+                calls: calls
+            )
+        }
+    }
+
     private let fileManager = FileManager.default
     private let calendar = Calendar.current
     private let dataSource: CodexDataSource
@@ -172,6 +212,10 @@ final class CodexUsageAnalyzer {
             return preciseSnapshot
         }
         return try loadFromStateSQLite()
+    }
+
+    func loadFastSnapshot() throws -> DashboardSnapshot {
+        try loadFromStateSQLite()
     }
 
     private func loadFromTokenCountJSONL() throws -> DashboardSnapshot {
@@ -201,6 +245,7 @@ final class CodexUsageAnalyzer {
         let daily = dailyUsage(from: events)
         let recentBins = recentBins(from: events)
         let officialSummary = loadOfficialThreadSummary()
+        let cacheUsage = cacheUsage(from: events, recentBins: recentBins, threadInfo: loadThreadInfo())
         let stats = DashboardStats(
             totalTokens: officialSummary?.totalTokens ?? events.reduce(0) { $0 + $1.tokens },
             peakDayTokens: daily.map(\.tokens).max() ?? 0,
@@ -220,6 +265,7 @@ final class CodexUsageAnalyzer {
             dailyUsage: daily,
             recentBins: recentBins,
             pluginUsage: metadata.plugins,
+            cacheUsage: cacheUsage,
             generatedAt: Date()
         )
     }
@@ -245,7 +291,7 @@ final class CodexUsageAnalyzer {
         let binRows = try sqliteRows(
             db: db,
             sql: """
-            SELECT CAST((COALESCE(updated_at_ms, updated_at)/1000) / 1800 AS INTEGER) * 1800 AS bin_epoch,
+            SELECT CAST((COALESCE(updated_at_ms, updated_at)/1000) / 300 AS INTEGER) * 300 AS bin_epoch,
                    SUM(tokens_used) AS tokens,
                    COUNT(*) AS threads
             FROM threads
@@ -303,7 +349,7 @@ final class CodexUsageAnalyzer {
         guard let recentStart = calendar.date(byAdding: .hour, value: -24, to: now) else {
             throw NSError(domain: "CodexTokenBar", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to calculate recent range"])
         }
-        let interval: TimeInterval = 30 * 60
+        let interval: TimeInterval = 5 * 60
         var binMap: [Int: (tokens: Int, calls: Int)] = [:]
         for row in binRows {
             guard let epoch = Int(row[safe: 0] ?? "") else { continue }
@@ -313,7 +359,7 @@ final class CodexUsageAnalyzer {
             )
         }
 
-        let recentBins = (0..<48).map { index -> BinUsage in
+        let recentBins = (0..<288).map { index -> BinUsage in
             let date = recentStart.addingTimeInterval(Double(index) * interval)
             let epoch = Int(floor(date.timeIntervalSince1970 / interval) * interval)
             let usage = binMap[epoch] ?? (0, 0)
@@ -358,6 +404,7 @@ final class CodexUsageAnalyzer {
             dailyUsage: daily,
             recentBins: recentBins,
             pluginUsage: Array(plugins),
+            cacheUsage: .empty,
             generatedAt: Date()
         )
     }
@@ -442,6 +489,42 @@ final class CodexUsageAnalyzer {
         return (Array(plugins), reasoning)
     }
 
+    private func loadThreadInfo() -> [String: ThreadInfo] {
+        let db = dataSource.stateDatabase.path
+        guard let rows = try? sqliteRows(
+            db: db,
+            sql: """
+            SELECT id, title, first_user_message, preview, COALESCE(updated_at_ms, updated_at)
+            FROM threads;
+            """
+        ) else {
+            return [:]
+        }
+
+        var info: [String: ThreadInfo] = [:]
+        for row in rows {
+            guard let id = row[safe: 0], !id.isEmpty else { continue }
+            let title = firstNonEmpty([
+                row[safe: 1],
+                row[safe: 2],
+                row[safe: 3]
+            ]) ?? "Untitled"
+            let updatedAt = parseThreadTimestamp(row[safe: 4])
+            info[id] = ThreadInfo(title: title, updatedAt: updatedAt)
+        }
+        return info
+    }
+
+    private func firstNonEmpty(_ values: [String?]) -> String? {
+        for value in values {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
+    }
+
     private func jsonlFiles(under root: URL) -> [URL] {
         guard let enumerator = fileManager.enumerator(
             at: root,
@@ -471,7 +554,20 @@ final class CodexUsageAnalyzer {
 
         var events: [TokenEvent] = []
         var previousTotal: Int?
-        streamTokenCountLines(from: file) { lineString in
+        var currentUserPrompt = ""
+        var assistantFragments: [String] = []
+        streamSessionLines(from: file) { lineString in
+            if let message = extractPayloadMessage(from: lineString, expectedType: "user_message") {
+                currentUserPrompt = message
+                assistantFragments.removeAll(keepingCapacity: true)
+                return
+            }
+
+            if let message = extractPayloadMessage(from: lineString, expectedType: "agent_message") {
+                assistantFragments.append(message)
+                return
+            }
+
             guard lineString.contains("\"total_token_usage\""),
                   let timestampString = extractString(after: "\"timestamp\":\"", in: lineString),
                   let timestamp = parseDate(timestampString) else {
@@ -502,8 +598,11 @@ final class CodexUsageAnalyzer {
                 inputTokens: extractInt(after: "\"last_token_usage\":", marker: "\"input_tokens\":", in: lineString) ?? 0,
                 cachedInputTokens: extractInt(after: "\"last_token_usage\":", marker: "\"cached_input_tokens\":", in: lineString) ?? 0,
                 outputTokens: extractInt(after: "\"last_token_usage\":", marker: "\"output_tokens\":", in: lineString) ?? 0,
-                reasoningOutputTokens: extractInt(after: "\"last_token_usage\":", marker: "\"reasoning_output_tokens\":", in: lineString) ?? 0
+                reasoningOutputTokens: extractInt(after: "\"last_token_usage\":", marker: "\"reasoning_output_tokens\":", in: lineString) ?? 0,
+                userPrompt: excerpt(currentUserPrompt, limit: 180),
+                assistantResponse: excerpt(assistantFragments.joined(separator: " "), limit: 220)
             ))
+            assistantFragments.removeAll(keepingCapacity: true)
         }
 
         if let cacheKey {
@@ -511,6 +610,33 @@ final class CodexUsageAnalyzer {
         }
 
         return events
+    }
+
+    private func extractPayloadMessage(from line: String, expectedType: String) -> String? {
+        guard line.contains(#""payload""#),
+              line.contains(#""type":"\#(expectedType)""#),
+              let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = object["payload"] as? [String: Any],
+              payload["type"] as? String == expectedType,
+              let message = payload["message"] as? String else {
+            return nil
+        }
+        let normalized = normalizeExcerptText(message)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func normalizeExcerptText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func excerpt(_ value: String, limit: Int) -> String {
+        let normalized = normalizeExcerptText(value)
+        guard normalized.count > limit else { return normalized }
+        let end = normalized.index(normalized.startIndex, offsetBy: limit)
+        return String(normalized[..<end]) + "..."
     }
 
     private func sessionCacheKey(for file: URL) -> SessionCacheKey? {
@@ -542,13 +668,15 @@ final class CodexUsageAnalyzer {
         return Int(digits)
     }
 
-    private func streamTokenCountLines(from file: URL, handleLine: (String) -> Void) {
+    private func streamSessionLines(from file: URL, handleLine: (String) -> Void) {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return }
         defer { try? handle.close() }
 
         var pending = Data()
         let newline = Data([0x0A])
         let tokenNeedle = Data(#""token_count""#.utf8)
+        let userMessageNeedle = Data(#""type":"user_message""#.utf8)
+        let agentMessageNeedle = Data(#""type":"agent_message""#.utf8)
 
         while true {
             let data = handle.readData(ofLength: 1_048_576)
@@ -558,8 +686,10 @@ final class CodexUsageAnalyzer {
             var searchStart = pending.startIndex
             while let newlineRange = pending[searchStart...].range(of: newline) {
                 let lineRange = searchStart..<newlineRange.lowerBound
-                if pending[lineRange].range(of: tokenNeedle) != nil {
-                    let lineData = pending[lineRange]
+                let lineData = pending[lineRange]
+                if lineData.range(of: tokenNeedle) != nil
+                    || lineData.range(of: userMessageNeedle) != nil
+                    || lineData.range(of: agentMessageNeedle) != nil {
                     handleLine(String(decoding: lineData, as: UTF8.self))
                 }
                 searchStart = newlineRange.upperBound
@@ -570,7 +700,10 @@ final class CodexUsageAnalyzer {
             }
         }
 
-        if !pending.isEmpty, pending.range(of: tokenNeedle) != nil {
+        if !pending.isEmpty,
+           pending.range(of: tokenNeedle) != nil
+            || pending.range(of: userMessageNeedle) != nil
+            || pending.range(of: agentMessageNeedle) != nil {
             handleLine(String(decoding: pending, as: UTF8.self))
         }
     }
@@ -615,7 +748,7 @@ final class CodexUsageAnalyzer {
     private func recentBins(from events: [TokenEvent]) -> [BinUsage] {
         let end = Date()
         guard let start = calendar.date(byAdding: .hour, value: -24, to: end) else { return [] }
-        let interval: TimeInterval = 30 * 60
+        let interval: TimeInterval = 5 * 60
         var grouped: [Date: (tokens: Int, calls: Int)] = [:]
 
         for event in events where event.timestamp >= start && event.timestamp <= end {
@@ -625,11 +758,130 @@ final class CodexUsageAnalyzer {
             grouped[bin] = (current.tokens + event.tokens, current.calls + 1)
         }
 
-        return (0..<48).map { index in
+        return (0..<288).map { index in
             let bin = start.addingTimeInterval(Double(index) * interval)
             let usage = grouped[bin] ?? (0, 0)
             return BinUsage(start: bin, tokens: usage.tokens, calls: usage.calls)
         }
+    }
+
+    private func cacheUsage(from events: [TokenEvent], recentBins: [BinUsage], threadInfo: [String: ThreadInfo]) -> TokenCacheUsage {
+        var total = TokenCacheAccumulator()
+        var daily: [Date: TokenCacheAccumulator] = [:]
+        var hourly: [Date: TokenCacheAccumulator] = [:]
+        var recent: [Date: TokenCacheAccumulator] = [:]
+        var sessions: [String: TokenCacheAccumulator] = [:]
+        var sessionLastUpdated: [String: Date] = [:]
+        let recentInterval: TimeInterval = 5 * 60
+        let recentStart = recentBins.first?.start
+        let recentEnd = recentBins.last?.start.addingTimeInterval(recentInterval)
+
+        for event in events {
+            total.add(event)
+
+            let day = calendar.startOfDay(for: event.timestamp)
+            daily[day, default: TokenCacheAccumulator()].add(event)
+
+            if let hour = calendar.dateInterval(of: .hour, for: event.timestamp)?.start {
+                hourly[hour, default: TokenCacheAccumulator()].add(event)
+            }
+
+            if let recentStart, let recentEnd,
+               event.timestamp >= recentStart,
+               event.timestamp <= recentEnd {
+                let offset = floor(event.timestamp.timeIntervalSince(recentStart) / recentInterval)
+                let bin = recentStart.addingTimeInterval(offset * recentInterval)
+                recent[bin, default: TokenCacheAccumulator()].add(event)
+            }
+
+            sessions[event.sessionID, default: TokenCacheAccumulator()].add(event)
+            if let current = sessionLastUpdated[event.sessionID] {
+                sessionLastUpdated[event.sessionID] = max(current, event.timestamp)
+            } else {
+                sessionLastUpdated[event.sessionID] = event.timestamp
+            }
+        }
+
+        let dailyBuckets = daily
+            .map { date, accumulator in
+                TokenCacheBucket(start: date, breakdown: accumulator.breakdown)
+            }
+            .sorted { $0.start < $1.start }
+
+        let hourlyBuckets = hourly
+            .map { date, accumulator in
+                TokenCacheBucket(start: date, breakdown: accumulator.breakdown)
+            }
+            .sorted { $0.start < $1.start }
+
+        let recentBuckets = recentBins.map { bin in
+            TokenCacheBucket(start: bin.start, breakdown: (recent[bin.start] ?? TokenCacheAccumulator()).breakdown)
+        }
+
+        let sessionItems = sessions.map { sessionID, accumulator in
+            let info = threadInfo[sessionID]
+            return SessionCacheUsage(
+                id: sessionID,
+                title: info?.title ?? sessionID,
+                lastUpdated: info?.updatedAt ?? sessionLastUpdated[sessionID],
+                breakdown: accumulator.breakdown
+            )
+        }
+        .sorted { lhs, rhs in
+            switch (lhs.lastUpdated, rhs.lastUpdated) {
+            case let (left?, right?) where left != right:
+                return left > right
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                return lhs.breakdown.totalTokens > rhs.breakdown.totalTokens
+            }
+        }
+
+        let orderedEvents = events.enumerated().sorted { lhs, rhs in
+            if lhs.element.timestamp != rhs.element.timestamp {
+                return lhs.element.timestamp < rhs.element.timestamp
+            }
+            return lhs.offset < rhs.offset
+        }
+        var turnIndexBySession: [String: Int] = [:]
+        let turnItems = orderedEvents.map { index, event in
+            let turnIndex = (turnIndexBySession[event.sessionID] ?? 0) + 1
+            turnIndexBySession[event.sessionID] = turnIndex
+            let info = threadInfo[event.sessionID]
+            let breakdown = TokenCacheBreakdown(
+                inputTokens: event.inputTokens,
+                cachedInputTokens: min(event.cachedInputTokens, event.inputTokens),
+                outputTokens: event.outputTokens,
+                reasoningOutputTokens: event.reasoningOutputTokens,
+                totalTokens: event.tokens,
+                calls: 1
+            )
+            return TurnCacheUsage(
+                id: "\(event.sessionID)-\(Int(event.timestamp.timeIntervalSince1970))-\(index)",
+                sessionID: event.sessionID,
+                sessionTitle: info?.title ?? event.sessionID,
+                timestamp: event.timestamp,
+                turnIndexInSession: turnIndex,
+                userPrompt: event.userPrompt,
+                assistantResponse: event.assistantResponse,
+                breakdown: breakdown
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.timestamp > rhs.timestamp
+        }
+
+        return TokenCacheUsage(
+            total: total.breakdown,
+            daily: dailyBuckets,
+            hourly: hourlyBuckets,
+            recentBins: recentBuckets,
+            sessions: sessionItems,
+            turns: turnItems
+        )
     }
 
     private func currentStreakDays(from daily: [DayUsage]) -> Int {
@@ -672,5 +924,11 @@ final class CodexUsageAnalyzer {
             return date
         }
         return plainDateFormatter.date(from: value)
+    }
+
+    private func parseThreadTimestamp(_ value: String?) -> Date? {
+        guard let raw = value, let number = Double(raw) else { return nil }
+        let seconds = number > 10_000_000_000 ? number / 1000 : number
+        return Date(timeIntervalSince1970: seconds)
     }
 }

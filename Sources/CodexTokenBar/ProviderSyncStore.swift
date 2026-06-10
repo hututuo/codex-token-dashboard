@@ -58,7 +58,6 @@ struct ProviderSyncSnapshot: Equatable {
     var sqliteIntegrity: String = "未验证"
     var sessionIndexCurrentThreadPresent: Bool = false
     var sessionIndexRows: Int = 0
-    var sessionIndexDuplicateIDs: Int = 0
     var workspaceOrderMissing: Int = 0
     var workspaceIssues: [ProviderSyncWorkspaceIssue] = []
     var visibilitySummary = ProviderSyncVisibilitySummary()
@@ -194,7 +193,6 @@ private struct ProviderSyncReport {
     var latestThreadID: String?
     var sessionIndexIDs: Set<String>
     var sessionIndexRows: Int
-    var sessionIndexDuplicateIDs: Int
     var workspaceIssues: [ProviderSyncWorkspaceIssue]
     var visibilitySummary: ProviderSyncVisibilitySummary
     var codexRunning: Bool
@@ -227,7 +225,6 @@ private struct ProviderSyncSessionIndexLines {
     var lines: [String]
     var ids: Set<String>
     var rows: Int
-    var duplicateIDs: Int
 }
 
 private struct ProviderSyncSQLiteThreadColumns {
@@ -260,7 +257,6 @@ private final class ProviderSyncEngine {
         let status = allSessionsMatch
             && allSQLiteMatch
             && report.sqliteRowsToRepair == 0
-            && report.sessionIndexDuplicateIDs == 0
             && report.workspaceIssues.isEmpty
             && report.sqliteIntegrity == "ok"
             ? "验证通过"
@@ -318,7 +314,6 @@ private final class ProviderSyncEngine {
         let verifiedStatus = allSessionsMatch
             && allSQLiteMatch
             && verified.sqliteRowsToRepair == 0
-            && verified.sessionIndexDuplicateIDs == 0
             && verified.workspaceIssues.isEmpty
             && verified.sqliteIntegrity == "ok"
             ? "同步完成并已验证"
@@ -383,7 +378,6 @@ private final class ProviderSyncEngine {
             latestThreadID: latestSQLite.threadID,
             sessionIndexIDs: indexIDs.ids,
             sessionIndexRows: indexIDs.rows,
-            sessionIndexDuplicateIDs: indexIDs.duplicateIDs,
             workspaceIssues: workspaceIssues,
             visibilitySummary: visibilitySummary,
             codexRunning: isCodexRunning()
@@ -411,7 +405,6 @@ private final class ProviderSyncEngine {
             sqliteIntegrity: report.sqliteIntegrity,
             sessionIndexCurrentThreadPresent: report.latestThreadID.map { report.sessionIndexIDs.contains($0) } ?? false,
             sessionIndexRows: report.sessionIndexRows,
-            sessionIndexDuplicateIDs: report.sessionIndexDuplicateIDs,
             workspaceOrderMissing: report.workspaceIssues.count,
             workspaceIssues: report.workspaceIssues,
             visibilitySummary: report.visibilitySummary,
@@ -898,39 +891,29 @@ private final class ProviderSyncEngine {
 
         let index = codexHome.appendingPathComponent("session_index.jsonl")
         let existing = try readSessionIndexLines(codexHome: codexHome)
-        let deduplicatedLines = deduplicateSessionIndexLines(existing.lines)
-        let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         var seenIDs = Set<String>()
-        var changedLines = existing.duplicateIDs
         var lines: [String] = []
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-        for line in deduplicatedLines where !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let id = sessionIndexLineInfo(line)?.id,
-                  let row = rowsByID[id] else {
-                lines.append(line)
-                continue
+        for line in existing.lines where !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let id = sessionIndexLineInfo(line)?.id {
+                seenIDs.insert(id)
             }
-            seenIDs.insert(id)
-            let updatedLine = try makeSessionIndexLine(row: row, existingLine: line, formatter: formatter)
-            if updatedLine != line {
-                changedLines += 1
-            }
-            lines.append(updatedLine)
+            lines.append(line)
         }
 
         let missingRows = rows.filter { !seenIDs.contains($0.id) }
         for row in missingRows {
             lines.append(try makeSessionIndexLine(row: row, existingLine: nil, formatter: formatter))
         }
-        guard changedLines > 0 || !missingRows.isEmpty else { return 0 }
+        guard !missingRows.isEmpty else { return 0 }
 
         var output = lines.joined(separator: "\n").data(using: .utf8) ?? Data()
         output.append(0x0A)
         try output.write(to: index, options: [.atomic])
-        return changedLines + missingRows.count
+        return missingRows.count
     }
 
     private func makeSessionIndexLine(
@@ -954,20 +937,19 @@ private final class ProviderSyncEngine {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    private func readSessionIndexIDs(codexHome: URL) throws -> (ids: Set<String>, rows: Int, duplicateIDs: Int) {
+    private func readSessionIndexIDs(codexHome: URL) throws -> (ids: Set<String>, rows: Int) {
         let result = try readSessionIndexLines(codexHome: codexHome)
-        return (result.ids, result.rows, result.duplicateIDs)
+        return (result.ids, result.rows)
     }
 
     private func readSessionIndexLines(codexHome: URL) throws -> ProviderSyncSessionIndexLines {
         let index = codexHome.appendingPathComponent("session_index.jsonl")
         guard fileManager.fileExists(atPath: index.path) else {
-            return ProviderSyncSessionIndexLines(lines: [], ids: [], rows: 0, duplicateIDs: 0)
+            return ProviderSyncSessionIndexLines(lines: [], ids: [], rows: 0)
         }
         let text = try String(contentsOf: index, encoding: .utf8)
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var ids = Set<String>()
-        var duplicateIDs = Set<String>()
         var rows = 0
         for line in lines where !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             rows += 1
@@ -976,58 +958,9 @@ private final class ProviderSyncEngine {
                   let id = object["id"] as? String else {
                 continue
             }
-            if ids.contains(id) {
-                duplicateIDs.insert(id)
-            } else {
-                ids.insert(id)
-            }
+            ids.insert(id)
         }
-        return ProviderSyncSessionIndexLines(lines: lines, ids: ids, rows: rows, duplicateIDs: duplicateIDs.count)
-    }
-
-    private func deduplicateSessionIndexLines(_ lines: [String]) -> [String] {
-        struct Candidate {
-            var line: String
-            var order: Int
-            var updatedAtMilliseconds: Int64
-            var hasID: Bool
-            var id: String?
-        }
-
-        var bestByID: [String: Candidate] = [:]
-        var invalidLines: [Candidate] = []
-        for (index, line) in lines.enumerated() {
-            guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-            guard let info = sessionIndexLineInfo(line) else {
-                invalidLines.append(Candidate(line: line, order: index, updatedAtMilliseconds: 0, hasID: false, id: nil))
-                continue
-            }
-
-            let candidate = Candidate(
-                line: line,
-                order: index,
-                updatedAtMilliseconds: info.updatedAtMilliseconds,
-                hasID: true,
-                id: info.id
-            )
-            if let current = bestByID[info.id] {
-                if candidate.updatedAtMilliseconds > current.updatedAtMilliseconds ||
-                    (candidate.updatedAtMilliseconds == current.updatedAtMilliseconds && candidate.order > current.order) {
-                    bestByID[info.id] = candidate
-                }
-            } else {
-                bestByID[info.id] = candidate
-            }
-        }
-
-        var chosenOrders: [Int: String] = [:]
-        for candidate in bestByID.values {
-            chosenOrders[candidate.order] = candidate.line
-        }
-        for candidate in invalidLines {
-            chosenOrders[candidate.order] = candidate.line
-        }
-        return chosenOrders.keys.sorted().compactMap { chosenOrders[$0] }
+        return ProviderSyncSessionIndexLines(lines: lines, ids: ids, rows: rows)
     }
 
     private func sessionIndexLineInfo(_ line: String) -> (id: String, updatedAtMilliseconds: Int64)? {

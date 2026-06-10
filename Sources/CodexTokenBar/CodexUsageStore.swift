@@ -7,6 +7,7 @@ final class CodexUsageStore: ObservableObject {
     @Published private(set) var snapshot: DashboardSnapshot = .empty
     @Published private(set) var status: String = "Loading local Codex usage..."
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isInitialLoading = true
     @Published private(set) var dataSourceLabel: String = "查找 Codex 目录..."
     @Published private(set) var dataSourceOrigin: String = "自动"
     @Published var selectedMode: ActivityMode = .daily
@@ -14,7 +15,8 @@ final class CodexUsageStore: ObservableObject {
     private let resolver = CodexDataSourceResolver()
     private var dataSource: CodexDataSource?
     private var timer: Timer?
-    private var refreshInterval: TimeInterval = 60
+    private var refreshInterval: TimeInterval = 300
+    private var didFinishInitialLoad = false
 
     var currentDataSource: CodexDataSource? {
         dataSource
@@ -35,15 +37,31 @@ final class CodexUsageStore: ObservableObject {
         guard let dataSource else {
             snapshot = .empty
             status = "未找到本地 Codex 数据目录"
+            isInitialLoading = false
+            didFinishInitialLoad = true
             return
         }
 
+        let isFirstLoad = !didFinishInitialLoad
         isRefreshing = true
-        status = "Scanning \(dataSource.displayPath)/sessions..."
+        if isFirstLoad {
+            isInitialLoading = true
+            status = "正在读取本地索引..."
+        } else {
+            status = "Scanning \(dataSource.displayPath)/sessions..."
+        }
 
         Task {
             do {
                 let source = dataSource
+                if isFirstLoad,
+                   let quickSnapshot = try? await (Task.detached(priority: .utility) {
+                    try CodexUsageAnalyzer(dataSource: source).loadFastSnapshot()
+                   }).value {
+                    snapshot = quickSnapshot
+                    status = "\(source.originLabel) · state_5.sqlite · 正在扫描精确 token..."
+                }
+
                 let loaded = try await Task.detached(priority: .utility) {
                     try CodexUsageAnalyzer(dataSource: source).load()
                 }.value
@@ -54,6 +72,8 @@ final class CodexUsageStore: ObservableObject {
                 status = "读取失败：\(error.localizedDescription)"
             }
             isRefreshing = false
+            didFinishInitialLoad = true
+            isInitialLoading = false
         }
     }
 
@@ -105,8 +125,13 @@ enum ActivityMode: String, CaseIterable, Identifiable {
     case daily = "每日"
     case weekly = "每周"
     case cumulative = "累计"
+    case cacheHitRate = "命中率"
 
     var id: String { rawValue }
+
+    var isSpecial: Bool {
+        self == .cacheHitRate
+    }
 }
 
 extension DashboardSnapshot {
@@ -127,6 +152,7 @@ extension DashboardSnapshot {
         dailyUsage: [],
         recentBins: [],
         pluginUsage: [],
+        cacheUsage: .empty,
         generatedAt: Date()
     )
 
@@ -141,11 +167,12 @@ extension DashboardSnapshot {
             return DayUsage(date: date, tokens: tokens, calls: tokens == 0 ? 0 : max(1, tokens / 120_000))
         }
 
-        let bins = (0..<48).compactMap { index -> BinUsage? in
-            guard let date = calendar.date(byAdding: .minute, value: -30 * (47 - index), to: Date()) else { return nil }
-            let tokens = index % 6 == 0 ? 9_800_000 : Int.random(in: 120_000...4_500_000)
+        let bins = (0..<288).compactMap { index -> BinUsage? in
+            guard let date = calendar.date(byAdding: .minute, value: -5 * (287 - index), to: Date()) else { return nil }
+            let tokens = index % 36 == 0 ? 9_800_000 : Int.random(in: 20_000...900_000)
             return BinUsage(start: date, tokens: tokens, calls: max(1, tokens / 110_000))
         }
+        let cacheUsage = sampleCacheUsage(days: days, bins: bins)
 
         return DashboardSnapshot(
             stats: DashboardStats(
@@ -170,9 +197,94 @@ extension DashboardSnapshot {
                 PluginUsage(name: "@presentations", runs: 3),
                 PluginUsage(name: "$paper-spine", runs: 3)
             ],
+            cacheUsage: cacheUsage,
             generatedAt: Date()
         )
     }()
+
+    private static func sampleCacheUsage(days: [DayUsage], bins: [BinUsage]) -> TokenCacheUsage {
+        func breakdown(totalTokens: Int, calls: Int, cacheRate: Double) -> TokenCacheBreakdown {
+            let inputTokens = Int(Double(totalTokens) * 0.94)
+            let outputTokens = max(totalTokens - inputTokens, 0)
+            let cachedInputTokens = Int(Double(inputTokens) * cacheRate)
+            return TokenCacheBreakdown(
+                inputTokens: inputTokens,
+                cachedInputTokens: cachedInputTokens,
+                outputTokens: outputTokens,
+                reasoningOutputTokens: Int(Double(outputTokens) * 0.28),
+                totalTokens: totalTokens,
+                calls: calls
+            )
+        }
+
+        let daily = days
+            .filter { $0.tokens > 0 }
+            .map { day in
+                TokenCacheBucket(
+                    start: day.date,
+                    breakdown: breakdown(totalTokens: day.tokens, calls: day.calls, cacheRate: 0.86)
+                )
+            }
+
+        let hourly = bins
+            .filter { $0.tokens > 0 }
+            .map { bin in
+                TokenCacheBucket(
+                    start: bin.start,
+                    breakdown: breakdown(totalTokens: bin.tokens, calls: bin.calls, cacheRate: 0.9)
+                )
+            }
+
+        let sessions = (0..<6).map { index in
+            let total = 1_800_000 + index * 420_000
+            return SessionCacheUsage(
+                id: "sample-\(index)",
+                title: "示例会话 \(index + 1)",
+                lastUpdated: Calendar.current.date(byAdding: .hour, value: -index * 3, to: Date()),
+                breakdown: breakdown(totalTokens: total, calls: 4 + index, cacheRate: 0.82 + Double(index) * 0.02)
+            )
+        }
+        var sampleTurnIndexBySession: [String: Int] = [:]
+        let turns = (0..<10).compactMap { index -> TurnCacheUsage? in
+            guard let timestamp = Calendar.current.date(byAdding: .minute, value: -index * 38, to: Date()) else {
+                return nil
+            }
+            let sessionID = "sample-\(index % 6)"
+            let turnIndex = (sampleTurnIndexBySession[sessionID] ?? 0) + 1
+            sampleTurnIndexBySession[sessionID] = turnIndex
+            let total = 260_000 + index * 42_000
+            return TurnCacheUsage(
+                id: "sample-turn-\(index)",
+                sessionID: sessionID,
+                sessionTitle: "示例会话 \((index % 6) + 1)",
+                timestamp: timestamp,
+                turnIndexInSession: turnIndex,
+                userPrompt: "为什么今天的缓存命中率偏低？",
+                assistantResponse: "我会先按会话和轮次拆开看，找到输入增长但缓存没有复用的地方。",
+                breakdown: breakdown(totalTokens: total, calls: 1, cacheRate: 0.78 + Double(index % 5) * 0.04)
+            )
+        }
+
+        let total = daily.reduce(TokenCacheBreakdown.empty) { partial, bucket in
+            TokenCacheBreakdown(
+                inputTokens: partial.inputTokens + bucket.breakdown.inputTokens,
+                cachedInputTokens: partial.cachedInputTokens + bucket.breakdown.cachedInputTokens,
+                outputTokens: partial.outputTokens + bucket.breakdown.outputTokens,
+                reasoningOutputTokens: partial.reasoningOutputTokens + bucket.breakdown.reasoningOutputTokens,
+                totalTokens: partial.totalTokens + bucket.breakdown.totalTokens,
+                calls: partial.calls + bucket.breakdown.calls
+            )
+        }
+
+        let recentBins = bins.map { bin in
+            TokenCacheBucket(
+                start: bin.start,
+                breakdown: breakdown(totalTokens: bin.tokens, calls: bin.calls, cacheRate: 0.9)
+            )
+        }
+
+        return TokenCacheUsage(total: total, daily: daily, hourly: hourly, recentBins: recentBins, sessions: sessions, turns: turns)
+    }
 }
 
 extension DateFormatter {

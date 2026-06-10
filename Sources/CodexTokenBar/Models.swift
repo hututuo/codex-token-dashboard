@@ -9,16 +9,18 @@ struct TokenEvent: Identifiable {
     let cachedInputTokens: Int
     let outputTokens: Int
     let reasoningOutputTokens: Int
+    let userPrompt: String
+    let assistantResponse: String
 }
 
-struct DayUsage: Identifiable {
+struct DayUsage: Identifiable, Equatable {
     let id = UUID()
     let date: Date
     let tokens: Int
     let calls: Int
 }
 
-struct BinUsage: Identifiable {
+struct BinUsage: Identifiable, Equatable {
     let id = UUID()
     let start: Date
     let tokens: Int
@@ -29,6 +31,94 @@ struct PluginUsage: Identifiable {
     let id = UUID()
     let name: String
     let runs: Int
+}
+
+struct TokenCacheBreakdown: Equatable {
+    let inputTokens: Int
+    let cachedInputTokens: Int
+    let outputTokens: Int
+    let reasoningOutputTokens: Int
+    let totalTokens: Int
+    let calls: Int
+
+    var uncachedInputTokens: Int {
+        max(inputTokens - cachedInputTokens, 0)
+    }
+
+    var nonCachedTotalTokens: Int {
+        uncachedInputTokens + outputTokens
+    }
+
+    var cacheHitRate: Double {
+        guard inputTokens > 0 else { return 0 }
+        return Double(cachedInputTokens) / Double(inputTokens)
+    }
+
+    static let empty = TokenCacheBreakdown(
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+        totalTokens: 0,
+        calls: 0
+    )
+}
+
+struct TokenCacheBucket: Identifiable, Equatable {
+    let id = UUID()
+    let start: Date
+    let breakdown: TokenCacheBreakdown
+}
+
+struct SessionCacheUsage: Identifiable {
+    let id: String
+    let title: String
+    let lastUpdated: Date?
+    let breakdown: TokenCacheBreakdown
+}
+
+struct TurnCacheUsage: Identifiable {
+    let id: String
+    let sessionID: String
+    let sessionTitle: String
+    let timestamp: Date
+    let turnIndexInSession: Int
+    let userPrompt: String
+    let assistantResponse: String
+    let breakdown: TokenCacheBreakdown
+}
+
+struct TokenCacheUsage {
+    let total: TokenCacheBreakdown
+    let daily: [TokenCacheBucket]
+    let hourly: [TokenCacheBucket]
+    let recentBins: [TokenCacheBucket]
+    let sessions: [SessionCacheUsage]
+    let turns: [TurnCacheUsage]
+
+    static let empty = TokenCacheUsage(
+        total: .empty,
+        daily: [],
+        hourly: [],
+        recentBins: [],
+        sessions: [],
+        turns: []
+    )
+}
+
+extension Sequence where Element == TokenCacheBreakdown {
+    var combined: TokenCacheBreakdown {
+        reduce(.empty) { partial, breakdown in
+            TokenCacheBreakdown(
+                inputTokens: partial.inputTokens + breakdown.inputTokens,
+                cachedInputTokens: partial.cachedInputTokens + breakdown.cachedInputTokens,
+                outputTokens: partial.outputTokens + breakdown.outputTokens,
+                reasoningOutputTokens: partial.reasoningOutputTokens + breakdown.reasoningOutputTokens,
+                totalTokens: partial.totalTokens + breakdown.totalTokens,
+                calls: partial.calls + breakdown.calls
+            )
+        }
+    }
 }
 
 struct DashboardStats {
@@ -45,11 +135,19 @@ struct DashboardStats {
     let totalSkillsUsed: Int
 }
 
+extension Double {
+    var percentString: String {
+        guard isFinite else { return "0%" }
+        return String(format: "%.0f%%", self * 100)
+    }
+}
+
 struct DashboardSnapshot {
     let stats: DashboardStats
     let dailyUsage: [DayUsage]
     let recentBins: [BinUsage]
     let pluginUsage: [PluginUsage]
+    let cacheUsage: TokenCacheUsage
     let generatedAt: Date
 }
 

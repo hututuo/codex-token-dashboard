@@ -74,6 +74,21 @@ enum AppTheme {
         }
     }
 
+    static func cacheHitColor(rate: Double) -> Color {
+        switch rate {
+        case 0..<0.84:
+            return adaptive(light: rgba(0.960, 0.460, 0.100), dark: rgba(1.000, 0.540, 0.180))
+        case 0.84..<0.88:
+            return adaptive(light: rgba(0.900, 0.620, 0.050), dark: rgba(1.000, 0.720, 0.180))
+        case 0.88..<0.92:
+            return adaptive(light: rgba(0.160, 0.660, 0.680), dark: rgba(0.140, 0.820, 0.880))
+        case 0.92..<0.96:
+            return adaptive(light: rgba(0.080, 0.500, 0.930), dark: rgba(0.230, 0.680, 1.000))
+        default:
+            return adaptive(light: rgba(0.020, 0.250, 0.760), dark: rgba(0.340, 0.760, 1.000))
+        }
+    }
+
     private static func adaptive(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             isDark(appearance) ? dark : light

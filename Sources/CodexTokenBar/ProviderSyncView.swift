@@ -34,17 +34,23 @@ struct ProviderSyncPage: View {
                     )
                 }
 
-                ProviderSyncView(store: store, dataSource: dataSource)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ProviderSyncView(store: store, dataSource: dataSource)
 
-                Text("建议退出 Codex Desktop 后执行同步；运行中的 Codex 可能会重新写回历史索引。所有同步都会先创建完整备份，可在本页回滚最近一次备份。")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                        Text("建议退出 Codex Desktop 后执行同步；运行中的 Codex 可能会重新写回历史索引。所有同步都会先创建完整备份，可在本页回滚最近一次备份。")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .frame(maxWidth: 980, alignment: .leading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                }
             }
             .padding(24)
             .frame(width: 1040)
         }
-        .frame(width: 1080, height: 570)
+        .frame(width: 1080, height: 720)
         .onAppear {
             store.scan(dataSource: dataSource)
         }
@@ -80,7 +86,7 @@ struct ProviderSyncView: View {
                 ProviderSyncMetric(value: "\(store.snapshot.visibilitySummary.currentWorkspaceDesktopThreads)", label: "当前项目")
                 ProviderSyncMetric(value: store.snapshot.sqliteIntegrity, label: "数据库检查")
                 ProviderSyncMetric(value: "\(store.snapshot.sqliteRowsToRepair)", label: "Provider 行")
-                ProviderSyncMetric(value: "\(store.snapshot.sessionIndexDuplicateIDs)", label: "重复索引")
+                ProviderSyncMetric(value: "\(store.snapshot.sessionIndexRows)", label: "索引行")
             }
 
             HStack(alignment: .top, spacing: 10) {
@@ -169,7 +175,6 @@ struct ProviderSyncView: View {
     private var repairStatus: String {
         if store.snapshot.hasMixedProviders ||
             store.snapshot.sqliteRowsToRepair > 0 ||
-            store.snapshot.sessionIndexDuplicateIDs > 0 ||
             store.snapshot.workspaceOrderMissing > 0 {
             return "待修复"
         }
@@ -207,9 +212,6 @@ struct ProviderSyncView: View {
         if store.snapshot.invalidSessionFiles > 0 {
             parts.append("异常首行 \(store.snapshot.invalidSessionFiles) 条")
         }
-        if store.snapshot.sessionIndexDuplicateIDs > 0 {
-            parts.append("重复索引 \(store.snapshot.sessionIndexDuplicateIDs) 个")
-        }
         if store.snapshot.workspaceOrderMissing > 0 {
             parts.append("工作区缺序 \(store.snapshot.workspaceOrderMissing) 个")
         }
@@ -220,7 +222,6 @@ struct ProviderSyncView: View {
         jsonlMismatchCount
             + store.snapshot.sqliteRowsToRepair
             + store.snapshot.invalidSessionFiles
-            + store.snapshot.sessionIndexDuplicateIDs
             + store.snapshot.workspaceOrderMissing
     }
 
@@ -299,20 +300,7 @@ private struct ProviderSyncStepCard: View {
 
             Spacer(minLength: 0)
 
-            VStack(spacing: 6) {
-                primaryButton
-
-                if let secondaryTitle, let secondaryAction {
-                    Button(role: secondaryRole) {
-                        secondaryAction()
-                    } label: {
-                        Label(secondaryTitle, systemImage: secondarySystemImage ?? "arrow.uturn.backward")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
+            actionButtons
             .font(.system(size: 12, weight: .medium))
             .disabled(disabled)
         }
@@ -326,6 +314,26 @@ private struct ProviderSyncStepCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
             .stroke(AppTheme.border, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        if let secondaryTitle, let secondaryAction {
+            HStack(spacing: 6) {
+                primaryButton
+
+                Button(role: secondaryRole) {
+                    secondaryAction()
+                } label: {
+                    Label(secondaryTitle, systemImage: secondarySystemImage ?? "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        } else {
+            primaryButton
+        }
     }
 
     @ViewBuilder
@@ -452,9 +460,6 @@ private struct ProviderSyncResultPanel: View {
         var values: [String] = []
         values.append("索引 \(snapshot.sessionIndexRows)")
         values.append(snapshot.sessionIndexCurrentThreadPresent ? "当前会话 present" : "当前会话 missing")
-        if snapshot.sessionIndexDuplicateIDs > 0 {
-            values.append("重复索引 \(snapshot.sessionIndexDuplicateIDs)")
-        }
         if snapshot.workspaceIssues.isEmpty {
             values.append("工作区顺序正常")
         } else {
