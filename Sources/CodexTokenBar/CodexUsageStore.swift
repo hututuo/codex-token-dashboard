@@ -126,11 +126,12 @@ enum ActivityMode: String, CaseIterable, Identifiable {
     case weekly = "每周"
     case cumulative = "累计"
     case cacheHitRate = "命中率"
+    case quotaRemaining = "额度"
 
     var id: String { rawValue }
 
     var isSpecial: Bool {
-        self == .cacheHitRate
+        self == .cacheHitRate || self == .quotaRemaining
     }
 }
 

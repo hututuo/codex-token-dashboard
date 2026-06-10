@@ -67,11 +67,13 @@ struct ExportSnapshotView: View {
                 ActivitySection(
                     dailyUsage: snapshot.dailyUsage,
                     cacheDaily: snapshot.cacheUsage.daily,
+                    quotaDaily: [],
                     selectedMode: .constant(.daily)
                 )
                 RecentUsageChart(
                     bins: snapshot.recentBins,
-                    cacheRecentBins: snapshot.cacheUsage.recentBins
+                    cacheRecentBins: snapshot.cacheUsage.recentBins,
+                    quotaRecentBins: []
                 )
             }
             .padding(54)

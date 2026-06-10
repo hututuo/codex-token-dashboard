@@ -117,30 +117,29 @@ struct AccountQuotaSegment: View {
 struct AccountQuotaPaceInsight: View {
     let snapshot: AccountQuotaSnapshot
 
-    private var insight: (icon: String, title: String, detail: String, accent: Color)? {
-        guard let sevenDay = snapshot.sevenDay,
-              sevenDay.resetsAt != nil else {
-            return nil
-        }
+    private var insight: AccountQuotaPaceStatus? {
+        snapshot.sevenDayPaceStatus
+    }
 
-        let expectedRemaining = sevenDay.expectedRemainingPercentByEvenPace ?? sevenDay.remainingPercent
-        let delta = sevenDay.remainingPercent - expectedRemaining
-        let detail = "剩 \(sevenDay.remainingPercent)% · 均速应剩 \(expectedRemaining)%"
-
-        if delta < -6 {
-            return ("figure.outdoor.cycle", "7天用快了，加油蹬", detail, AppTheme.accentCyan)
+    private var accent: Color {
+        guard let insight else { return .secondary }
+        switch insight.severity {
+        case .urgent:
+            return AppTheme.accentOrange
+        case .fast:
+            return AppTheme.accentCyan
+        case .slightlyFast:
+            return Color.orange
+        case .steady, .roomy:
+            return AppTheme.accentBlue
         }
-        if delta < 0 {
-            return ("speedometer", "略快于均速", detail, Color.orange)
-        }
-        return ("checkmark.seal", "7天余量充足", detail, AppTheme.accentBlue)
     }
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: insight?.icon ?? "clock.badge.questionmark")
+            Image(systemName: insight?.iconName ?? "clock.badge.questionmark")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(insight?.accent ?? .secondary)
+                .foregroundStyle(accent)
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 1) {

@@ -106,6 +106,29 @@ struct TokenCacheUsage {
     )
 }
 
+struct QuotaHistoryDailyBucket: Identifiable, Equatable {
+    var id: Date { date }
+    let date: Date
+    let fiveHourRemainingPercent: Double?
+    let sevenDayRemainingPercent: Double?
+    let sampleCount: Int
+}
+
+struct QuotaHistoryRecentBucket: Identifiable, Equatable {
+    var id: Date { start }
+    let start: Date
+    let fiveHourRemainingPercent: Double?
+    let sevenDayRemainingPercent: Double?
+}
+
+struct QuotaHistorySnapshot: Equatable {
+    let daily: [QuotaHistoryDailyBucket]
+    let recentBins: [QuotaHistoryRecentBucket]
+    let latest: Date?
+
+    static let empty = QuotaHistorySnapshot(daily: [], recentBins: [], latest: nil)
+}
+
 extension Sequence where Element == TokenCacheBreakdown {
     var combined: TokenCacheBreakdown {
         reduce(.empty) { partial, breakdown in

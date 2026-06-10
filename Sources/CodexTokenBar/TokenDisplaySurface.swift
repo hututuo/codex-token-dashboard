@@ -113,27 +113,17 @@ struct TokenDisplaySnapshot {
             return "读取中"
         }
 
-        let remaining = [quota.fiveHour, quota.sevenDay]
-            .compactMap { $0?.remainingPercent }
-            .min() ?? 100
-
-        let label: String
-        switch remaining {
-        case 50...:
-            label = "用量充足"
-        case 25..<50:
-            label = "节奏正常"
-        case 10..<25:
-            label = "额度偏紧"
-        default:
-            label = "快见底"
+        if let pace = quota.sevenDayPaceStatus {
+            return "\(pace.compactTitle)(\(pace.compactDetail))"
         }
 
-        if let expectedRemaining = quota.sevenDay?.expectedRemainingPercentByEvenPace
-            ?? quota.fiveHour?.expectedRemainingPercentByEvenPace {
-            return "\(label)(均\(expectedRemaining)%)"
+        if let sevenDay = quota.sevenDay {
+            return "7d剩\(sevenDay.remainingPercent)%"
         }
-        return label
+        if let fiveHour = quota.fiveHour {
+            return "5h剩\(fiveHour.remainingPercent)%"
+        }
+        return "额度已读"
     }
 }
 

@@ -84,6 +84,26 @@ struct AccountQuotaWindow: Equatable {
     }
 }
 
+enum AccountQuotaPaceSeverity: Equatable {
+    case urgent
+    case fast
+    case slightlyFast
+    case steady
+    case roomy
+}
+
+struct AccountQuotaPaceStatus: Equatable {
+    let severity: AccountQuotaPaceSeverity
+    let iconName: String
+    let title: String
+    let compactTitle: String
+    let detail: String
+    let compactDetail: String
+    let remainingPercent: Int
+    let expectedRemainingPercent: Int
+    let deltaPercent: Int
+}
+
 struct AccountQuotaSnapshot: Equatable {
     var fiveHour: AccountQuotaWindow?
     var sevenDay: AccountQuotaWindow?
@@ -115,6 +135,164 @@ struct AccountQuotaSnapshot: Equatable {
         }
         return accountName
     }
+
+    var sevenDayPaceStatus: AccountQuotaPaceStatus? {
+        guard let sevenDay,
+              sevenDay.resetsAt != nil,
+              let expectedRemaining = sevenDay.expectedRemainingPercentByEvenPace else {
+            return nil
+        }
+
+        let remaining = sevenDay.remainingPercent
+        let delta = remaining - expectedRemaining
+        let remainingHours = max(0, sevenDay.resetsAt?.timeIntervalSinceNow ?? 0) / 3600.0
+        let roundedHours = Int(ceil(remainingHours))
+        let isLastDay = remainingHours <= 24
+        let isFinalHours = remainingHours <= 8
+        let hour = Calendar.current.component(.hour, from: Date())
+        let isEvening = hour >= 18 || hour < 2
+        let deltaText: String
+        if delta < 0 {
+            deltaText = "少 \(abs(delta))%"
+        } else if delta > 0 {
+            deltaText = "多 \(delta)%"
+        } else {
+            deltaText = "正好贴线"
+        }
+        let resetText = remainingHours <= 36 ? " · 还剩 \(roundedHours)h" : ""
+        let detail = "7d 剩 \(remaining)% · 均速应剩 \(expectedRemaining)% · \(deltaText)\(resetText)"
+
+        if remaining <= 3 {
+            return AccountQuotaPaceStatus(
+                severity: .urgent,
+                iconName: "exclamationmark.triangle",
+                title: "不够烧了，先省着",
+                compactTitle: "先省着",
+                detail: detail,
+                compactDetail: "\(remaining)%剩",
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        }
+
+        if isFinalHours && (delta < 0 || remaining < 12) {
+            return AccountQuotaPaceStatus(
+                severity: .urgent,
+                iconName: "moon.stars",
+                title: "最后几小时，别梭哈",
+                compactTitle: "别梭哈",
+                detail: detail,
+                compactDetail: "\(roundedHours)h",
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        }
+
+        if isLastDay && isEvening && (delta < 0 || remaining < 18) {
+            return AccountQuotaPaceStatus(
+                severity: .urgent,
+                iconName: "moon.stars",
+                title: "最后一晚，省着点",
+                compactTitle: "省着点",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        }
+
+        if isLastDay && delta >= 0 {
+            return AccountQuotaPaceStatus(
+                severity: .steady,
+                iconName: "flag.checkered",
+                title: "最后一天，稳稳收官",
+                compactTitle: "收官稳",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        }
+
+        switch delta {
+        case ...(-35):
+            return AccountQuotaPaceStatus(
+                severity: .urgent,
+                iconName: "exclamationmark.triangle",
+                title: "额度掉太快，先刹一脚",
+                compactTitle: "刹一脚",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        case ...(-20):
+            return AccountQuotaPaceStatus(
+                severity: .urgent,
+                iconName: "figure.outdoor.cycle",
+                title: "差得有点多，使劲蹬",
+                compactTitle: "使劲蹬",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        case ...(-8):
+            return AccountQuotaPaceStatus(
+                severity: .fast,
+                iconName: "figure.outdoor.cycle",
+                title: "7天用快了，加油蹬",
+                compactTitle: "加油蹬",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        case ..<0:
+            return AccountQuotaPaceStatus(
+                severity: .slightlyFast,
+                iconName: "speedometer",
+                title: "略快于均速",
+                compactTitle: "略快",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        case 20...:
+            return AccountQuotaPaceStatus(
+                severity: .roomy,
+                iconName: "checkmark.seal",
+                title: "余量很富，可以喘口气",
+                compactTitle: "余量足",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        default:
+            return AccountQuotaPaceStatus(
+                severity: .steady,
+                iconName: "checkmark.seal",
+                title: "节奏稳，照这样来",
+                compactTitle: "节奏稳",
+                detail: detail,
+                compactDetail: deltaText,
+                remainingPercent: remaining,
+                expectedRemainingPercent: expectedRemaining,
+                deltaPercent: delta
+            )
+        }
+    }
 }
 
 @MainActor
@@ -122,8 +300,13 @@ final class AccountQuotaStore: ObservableObject {
     @Published private(set) var snapshot = AccountQuotaSnapshot.empty
 
     private var timer: Timer?
+    private weak var historyStore: QuotaHistoryStore?
     private var isRefreshing = false
     private let refreshInterval: TimeInterval = 60
+
+    func setHistoryStore(_ historyStore: QuotaHistoryStore) {
+        self.historyStore = historyStore
+    }
 
     func start() {
         guard timer == nil else { return }
@@ -154,6 +337,7 @@ final class AccountQuotaStore: ObservableObject {
                 switch result {
                 case .success(let quota):
                     self.snapshot = quota
+                    self.historyStore?.record(quota)
                 case .failure(let error):
                     var failed = self.snapshot
                     failed.status = "额度读取失败：\(error.localizedDescription)"

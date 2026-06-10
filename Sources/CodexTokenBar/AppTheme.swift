@@ -89,6 +89,19 @@ enum AppTheme {
         }
     }
 
+    static func quotaRemainingColor(percent: Double) -> Color {
+        switch percent {
+        case 0..<20:
+            return accentOrange
+        case 20..<45:
+            return adaptive(light: rgba(0.900, 0.620, 0.050), dark: rgba(1.000, 0.720, 0.180))
+        case 45..<70:
+            return accentCyan
+        default:
+            return accentBlue
+        }
+    }
+
     private static func adaptive(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             isDark(appearance) ? dark : light

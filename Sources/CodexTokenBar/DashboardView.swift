@@ -4,6 +4,7 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var store = CodexUsageStore()
     @StateObject private var quotaStore = AccountQuotaStore()
+    @StateObject private var quotaHistoryStore = QuotaHistoryStore()
     @StateObject private var providerSyncStore = ProviderSyncStore()
     @StateObject private var floatingPanel = FloatingTokenPanelController()
     @StateObject private var statusBarPanel = StatusBarTokenController()
@@ -37,6 +38,9 @@ struct DashboardView: View {
         ZStack {
             AppTheme.pageBackground
                 .ignoresSafeArea()
+                .onTapGesture {
+                    NotificationCenter.default.post(name: .dashboardBlankAreaClicked, object: nil)
+                }
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 18) {
@@ -68,18 +72,27 @@ struct DashboardView: View {
                     ActivitySection(
                         dailyUsage: store.snapshot.dailyUsage,
                         cacheDaily: store.snapshot.cacheUsage.daily,
+                        quotaDaily: quotaHistoryStore.snapshot.daily,
                         selectedMode: $store.selectedMode
                     )
 
                     RecentUsageChart(
                         bins: store.snapshot.recentBins,
-                        cacheRecentBins: store.snapshot.cacheUsage.recentBins
+                        cacheRecentBins: store.snapshot.cacheUsage.recentBins,
+                        quotaRecentBins: quotaHistoryStore.snapshot.recentBins
                     )
 
                     CacheHitRankingSection(cacheUsage: store.snapshot.cacheUsage)
                 }
                 .padding(.horizontal, 54)
                 .padding(.vertical, 20)
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            NotificationCenter.default.post(name: .dashboardBlankAreaClicked, object: nil)
+                        }
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -93,6 +106,8 @@ struct DashboardView: View {
         .onAppear {
             applyFloatingModeDefaultIfNeeded()
             liveMonitor.setPreciseTokenCountingEnabled(preciseTokenCountingEnabled)
+            quotaStore.setHistoryStore(quotaHistoryStore)
+            quotaHistoryStore.start()
             quotaStore.start()
             updateTokenDisplaySurface()
             updateUsageRefreshCadence()
@@ -351,6 +366,9 @@ struct HeaderView: View {
                         isEditingDisplayName = true
                     } label: {
                         HStack(spacing: 6) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 11, weight: .semibold))
+                                .opacity(0)
                             Text(accountDisplayName)
                                 .font(.system(size: 24, weight: .regular))
                                 .foregroundStyle(.primary)
@@ -414,6 +432,10 @@ struct HeaderView: View {
 
                 AccountQuotaStrip(snapshot: quotaSnapshot)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dashboardBlankAreaClicked)) { _ in
+            guard isEditingDisplayName else { return }
+            saveDisplayNameDraft()
         }
     }
 
@@ -509,6 +531,7 @@ struct StatCell: View {
 struct ActivitySection: View {
     let dailyUsage: [DayUsage]
     let cacheDaily: [TokenCacheBucket]
+    let quotaDaily: [QuotaHistoryDailyBucket]
     @Binding var selectedMode: ActivityMode
 
     var body: some View {
@@ -520,7 +543,7 @@ struct ActivitySection: View {
                 ActivityModeSelector(selectedMode: $selectedMode)
             }
 
-            TokenHeatmap(dailyUsage: dailyUsage, cacheDaily: cacheDaily, mode: selectedMode)
+            TokenHeatmap(dailyUsage: dailyUsage, cacheDaily: cacheDaily, quotaDaily: quotaDaily, mode: selectedMode)
         }
         .frame(maxWidth: 980)
     }
@@ -543,7 +566,7 @@ struct ActivityModeSelector: View {
                         Text(mode.rawValue)
                             .font(.system(size: 13, weight: selectedMode == mode ? .semibold : .medium))
                             .foregroundStyle(labelColor(for: mode))
-                            .frame(width: mode.isSpecial ? 58 : 42, height: 25)
+                            .frame(width: mode == .cacheHitRate ? 58 : 42, height: 25)
                             .background(background(for: mode))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -598,17 +621,21 @@ private struct HeatmapPreparedData {
 struct TokenHeatmap: View {
     let dailyUsage: [DayUsage]
     let cacheDaily: [TokenCacheBucket]
+    let quotaDaily: [QuotaHistoryDailyBucket]
     let mode: ActivityMode
     @State private var hoveredIndex: Int?
+    @State private var rangeStartIndex: Int?
+    @State private var rangeEndIndex: Int?
     @State private var preparedData: HeatmapPreparedData
 
     private let rows = 7
     private let gap: CGFloat = 4
     private let trailingInset: CGFloat = 9
 
-    init(dailyUsage: [DayUsage], cacheDaily: [TokenCacheBucket], mode: ActivityMode) {
+    init(dailyUsage: [DayUsage], cacheDaily: [TokenCacheBucket], quotaDaily: [QuotaHistoryDailyBucket], mode: ActivityMode) {
         self.dailyUsage = dailyUsage
         self.cacheDaily = cacheDaily
+        self.quotaDaily = quotaDaily
         self.mode = mode
         _preparedData = State(initialValue: .empty)
     }
@@ -621,6 +648,8 @@ struct TokenHeatmap: View {
             let cellSize = adaptiveCellSize(containerWidth: proxy.size.width, columnCount: columns.count)
             let gridWidth = gridWidth(columnCount: columns.count, cellSize: cellSize)
             let gridHeight = gridHeight(cellSize: cellSize)
+            let rangeSelection = normalizedRangeSelection(dayCount: summaries.count)
+            let rangeSummary = rangeSelection.flatMap { makeRangeSummary(range: $0) }
 
             VStack(spacing: 8) {
                 ZStack(alignment: .topLeading) {
@@ -643,10 +672,28 @@ struct TokenHeatmap: View {
                         }
                     }
 
+                    if let rangeSelection {
+                        ForEach(rangeSelection.lowerBound...rangeSelection.upperBound, id: \.self) { index in
+                            let isEndpoint = index == rangeSelection.lowerBound || index == rangeSelection.upperBound
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(AppTheme.accentBlue.opacity(0.08))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .stroke(AppTheme.accentBlue.opacity(isEndpoint ? 0.98 : 0.50), lineWidth: isEndpoint ? 2.0 : 1.1)
+                                )
+                                .frame(width: cellSize, height: cellSize)
+                                .offset(
+                                    x: CGFloat(index / rows) * (cellSize + gap),
+                                    y: CGFloat(index % rows) * (cellSize + gap)
+                                )
+                                .allowsHitTesting(false)
+                        }
+                    }
+
                     if let selectedIndex,
                        summaries.indices.contains(selectedIndex) {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .stroke(AppTheme.accentBlue, lineWidth: 1.4)
+                            .stroke(AppTheme.accentBlue, lineWidth: 1.9)
                             .frame(width: cellSize, height: cellSize)
                             .offset(
                                 x: CGFloat(selectedIndex / rows) * (cellSize + gap),
@@ -667,6 +714,15 @@ struct TokenHeatmap: View {
                                 hoveredIndex = nextIndex
                             }
                         },
+                        onClick: { location in
+                            guard let clickedIndex = nearestDayIndex(
+                                at: location,
+                                columnCount: columns.count,
+                                dayCount: summaries.count,
+                                cellSize: cellSize
+                            ) else { return }
+                            updateRangeSelection(clickedIndex)
+                        },
                         onExit: {
                             if hoveredIndex != nil {
                                 hoveredIndex = nil
@@ -679,19 +735,30 @@ struct TokenHeatmap: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 MonthLabels(markers: preparedData.monthMarkers, cellSize: cellSize, gap: gap)
-                HeatmapHoverInfo(summary: hoveredIndex.flatMap { summaries[safe: $0] } ?? summaries.last)
+                HeatmapHoverInfo(
+                    summary: hoveredIndex.flatMap { summaries[safe: $0] } ?? summaries.last,
+                    rangeSummary: rangeSummary,
+                    hasRangeStart: rangeStartIndex != nil
+                )
             }
         }
         .frame(height: 180)
         .onAppear(perform: refreshPreparedData)
         .onChange(of: dailyUsage) { _, _ in
+            clearRangeSelection()
             refreshPreparedData()
         }
         .onChange(of: cacheDaily) { _, _ in
+            clearRangeSelection()
+            refreshPreparedData()
+        }
+        .onChange(of: quotaDaily) { _, _ in
+            clearRangeSelection()
             refreshPreparedData()
         }
         .onChange(of: mode) { _, _ in
             hoveredIndex = nil
+            clearRangeSelection()
             refreshPreparedData()
         }
     }
@@ -739,6 +806,13 @@ struct TokenHeatmap: View {
             return AppTheme.cacheHitColor(rate: cacheBreakdown.cacheHitRate)
         }
 
+        if summary.isQuotaRemaining {
+            guard let percent = summary.quotaRemainingPercent else {
+                return AppTheme.emptyCell
+            }
+            return AppTheme.quotaRemainingColor(percent: percent)
+        }
+
         let value = summary.tokens
         guard value > 0 else { return AppTheme.emptyCell }
         let ratio = min(1.0, Double(value) / Double(max(maxTokens, 1)))
@@ -746,11 +820,97 @@ struct TokenHeatmap: View {
     }
 
     private func refreshPreparedData() {
-        preparedData = Self.prepare(dailyUsage: dailyUsage, cacheDaily: cacheDaily, mode: mode)
+        preparedData = Self.prepare(dailyUsage: dailyUsage, cacheDaily: cacheDaily, quotaDaily: quotaDaily, mode: mode)
     }
 
-    private static func prepare(dailyUsage: [DayUsage], cacheDaily: [TokenCacheBucket], mode: ActivityMode) -> HeatmapPreparedData {
-        let summaries = makeSummaries(dailyUsage: dailyUsage, cacheDaily: cacheDaily, mode: mode)
+    private func updateRangeSelection(_ index: Int) {
+        if rangeStartIndex == nil || rangeEndIndex != nil {
+            rangeStartIndex = index
+            rangeEndIndex = nil
+        } else {
+            rangeEndIndex = index
+        }
+    }
+
+    private func clearRangeSelection() {
+        rangeStartIndex = nil
+        rangeEndIndex = nil
+    }
+
+    private func normalizedRangeSelection(dayCount: Int) -> ClosedRange<Int>? {
+        guard let start = rangeStartIndex, dayCount > 0 else { return nil }
+        let clampedStart = min(max(start, 0), dayCount - 1)
+        let clampedEnd = min(max(rangeEndIndex ?? start, 0), dayCount - 1)
+        return min(clampedStart, clampedEnd)...max(clampedStart, clampedEnd)
+    }
+
+    private func makeRangeSummary(range: ClosedRange<Int>) -> HeatmapRangeSummary? {
+        guard !dailyUsage.isEmpty,
+              let firstDay = dailyUsage[safe: range.lowerBound],
+              let lastDay = dailyUsage[safe: range.upperBound] else {
+            return nil
+        }
+
+        let days = range.compactMap { dailyUsage[safe: $0] }
+        let title = rangeTitle(first: firstDay.date, last: lastDay.date)
+
+        if mode == .cacheHitRate {
+            let calendar = Calendar.current
+            let cacheByDay = Dictionary(uniqueKeysWithValues: cacheDaily.map { bucket in
+                (calendar.startOfDay(for: bucket.start), bucket.breakdown)
+            })
+            let breakdown = days.compactMap { day in
+                cacheByDay[calendar.startOfDay(for: day.date)]
+            }.combined
+            return HeatmapRangeSummary(
+                title: title,
+                dayCount: days.count,
+                tokens: breakdown.totalTokens,
+                calls: breakdown.calls,
+                cacheBreakdown: breakdown,
+                quotaAverageRemainingPercent: nil
+            )
+        }
+
+        if mode == .quotaRemaining {
+            let calendar = Calendar.current
+            let quotaByDay = Dictionary(uniqueKeysWithValues: quotaDaily.map { bucket in
+                (calendar.startOfDay(for: bucket.date), bucket)
+            })
+            let values = days.compactMap { day in
+                quotaByDay[calendar.startOfDay(for: day.date)]?.sevenDayRemainingPercent
+            }
+            return HeatmapRangeSummary(
+                title: title,
+                dayCount: days.count,
+                tokens: 0,
+                calls: values.count,
+                cacheBreakdown: nil,
+                quotaAverageRemainingPercent: values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+            )
+        }
+
+        let tokenTotal = days.reduce(0) { $0 + $1.tokens }
+        let callTotal = days.reduce(0) { $0 + $1.calls }
+        return HeatmapRangeSummary(
+            title: title,
+            dayCount: days.count,
+            tokens: tokenTotal,
+            calls: callTotal,
+            cacheBreakdown: nil,
+            quotaAverageRemainingPercent: nil
+        )
+    }
+
+    private func rangeTitle(first: Date, last: Date) -> String {
+        if Calendar.current.isDate(first, inSameDayAs: last) {
+            return DateFormatter.fullDay.string(from: first)
+        }
+        return "\(DateFormatter.fullDay.string(from: first)) - \(DateFormatter.fullDay.string(from: last))"
+    }
+
+    private static func prepare(dailyUsage: [DayUsage], cacheDaily: [TokenCacheBucket], quotaDaily: [QuotaHistoryDailyBucket], mode: ActivityMode) -> HeatmapPreparedData {
+        let summaries = makeSummaries(dailyUsage: dailyUsage, cacheDaily: cacheDaily, quotaDaily: quotaDaily, mode: mode)
         let columns = makeColumnIndices(dayCount: summaries.count)
         return HeatmapPreparedData(
             summaries: summaries,
@@ -766,7 +926,7 @@ struct TokenHeatmap: View {
         }
     }
 
-    private static func makeSummaries(dailyUsage: [DayUsage], cacheDaily: [TokenCacheBucket], mode: ActivityMode) -> [HeatmapUsageSummary] {
+    private static func makeSummaries(dailyUsage: [DayUsage], cacheDaily: [TokenCacheBucket], quotaDaily: [QuotaHistoryDailyBucket], mode: ActivityMode) -> [HeatmapUsageSummary] {
         switch mode {
         case .daily:
             return dailyUsage.map { day in
@@ -794,6 +954,28 @@ struct TokenHeatmap: View {
             }
         case .cacheHitRate:
             return cacheHitRateSummaries(dailyUsage: dailyUsage, cacheDaily: cacheDaily)
+        case .quotaRemaining:
+            return quotaRemainingSummaries(dailyUsage: dailyUsage, quotaDaily: quotaDaily)
+        }
+    }
+
+    private static func quotaRemainingSummaries(dailyUsage: [DayUsage], quotaDaily: [QuotaHistoryDailyBucket]) -> [HeatmapUsageSummary] {
+        let calendar = Calendar.current
+        let quotaByDay = Dictionary(uniqueKeysWithValues: quotaDaily.map { bucket in
+            (calendar.startOfDay(for: bucket.date), bucket)
+        })
+
+        return dailyUsage.map { day in
+            let date = calendar.startOfDay(for: day.date)
+            let bucket = quotaByDay[date]
+            return HeatmapUsageSummary(
+                title: DateFormatter.fullDay.string(from: day.date),
+                tokens: Int((bucket?.sevenDayRemainingPercent ?? 0).rounded()),
+                calls: bucket?.sampleCount ?? 0,
+                iconName: "gauge.with.dots.needle.67percent",
+                quotaRemainingPercent: bucket?.sevenDayRemainingPercent,
+                isQuotaRemaining: true
+            )
         }
     }
 
@@ -889,6 +1071,8 @@ struct HeatmapUsageSummary {
     let iconName: String
     let cacheBreakdown: TokenCacheBreakdown?
     let isCacheRate: Bool
+    let quotaRemainingPercent: Double?
+    let isQuotaRemaining: Bool
 
     init(
         title: String,
@@ -896,7 +1080,9 @@ struct HeatmapUsageSummary {
         calls: Int,
         iconName: String,
         cacheBreakdown: TokenCacheBreakdown? = nil,
-        isCacheRate: Bool = false
+        isCacheRate: Bool = false,
+        quotaRemainingPercent: Double? = nil,
+        isQuotaRemaining: Bool = false
     ) {
         self.title = title
         self.tokens = tokens
@@ -904,6 +1090,8 @@ struct HeatmapUsageSummary {
         self.iconName = iconName
         self.cacheBreakdown = cacheBreakdown
         self.isCacheRate = isCacheRate
+        self.quotaRemainingPercent = quotaRemainingPercent
+        self.isQuotaRemaining = isQuotaRemaining
     }
 
     var average: Int {
@@ -911,16 +1099,67 @@ struct HeatmapUsageSummary {
     }
 }
 
+struct HeatmapRangeSummary {
+    let title: String
+    let dayCount: Int
+    let tokens: Int
+    let calls: Int
+    let cacheBreakdown: TokenCacheBreakdown?
+    let quotaAverageRemainingPercent: Double?
+
+    var average: Int {
+        calls > 0 ? tokens / calls : 0
+    }
+
+    var compactTitle: String {
+        title
+            .replacingOccurrences(of: "年", with: ".")
+            .replacingOccurrences(of: "月", with: ".")
+            .replacingOccurrences(of: "日", with: "")
+            .replacingOccurrences(of: " - ", with: "-")
+    }
+}
+
 struct HeatmapHoverInfo: View {
     let summary: HeatmapUsageSummary?
+    let rangeSummary: HeatmapRangeSummary?
+    let hasRangeStart: Bool
 
     var body: some View {
-        HStack(spacing: 18) {
-            Image(systemName: summary == nil ? "cursorarrow.rays" : summary?.iconName ?? "calendar")
-                .foregroundStyle(summary == nil ? Color.secondary : AppTheme.accentBlue)
+        GeometryReader { proxy in
+            let leftWidth = max(300, proxy.size.width * 0.43)
+            HStack(spacing: 14) {
+                singleDayContent
+                    .frame(width: leftWidth, alignment: .leading)
+
+                Rectangle()
+                    .fill(AppTheme.border)
+                    .frame(width: 1, height: 22)
+
+                rangeContent
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .layoutPriority(1)
+            }
+        }
+        .frame(height: 20)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(AppTheme.insetBackground)
+        )
+    }
+
+    @ViewBuilder
+    private var singleDayContent: some View {
+        HStack(spacing: 12) {
             if let summary {
+                Image(systemName: summary.iconName)
+                    .foregroundStyle(AppTheme.accentBlue)
                 Text(summary.title)
                     .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 if summary.isCacheRate, let breakdown = summary.cacheBreakdown {
                     Text(breakdown.cacheHitRate.percentString)
                         .font(.system(size: 13, weight: .semibold))
@@ -932,6 +1171,13 @@ struct HeatmapHoverInfo: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                     Text("\(breakdown.calls) calls")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                } else if summary.isQuotaRemaining {
+                    Text(summary.quotaRemainingPercent.map { "\(Int($0.rounded()))% 7d 剩余" } ?? "暂无额度记录")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(summary.quotaRemainingPercent.map { AppTheme.quotaRemainingColor(percent: $0) } ?? .secondary)
+                    Text("\(summary.calls) samples")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 } else {
@@ -946,18 +1192,81 @@ struct HeatmapHoverInfo: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text("Hover a day to inspect token usage")
+                Image(systemName: "cursorarrow.rays")
+                    .foregroundStyle(Color.secondary)
+                Text("悬停查看单日")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
-            Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(AppTheme.insetBackground)
-        )
+        .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private var rangeContent: some View {
+        HStack(spacing: 12) {
+            if let rangeSummary {
+                Image(systemName: "calendar.badge.plus")
+                    .foregroundStyle(AppTheme.accentBlue)
+                Text("总计")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(rangeSummary.compactTitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .minimumScaleFactor(0.82)
+                    .layoutPriority(2)
+                Text("\(rangeSummary.dayCount) 天")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .layoutPriority(1)
+
+                if let breakdown = rangeSummary.cacheBreakdown {
+                    Text(breakdown.cacheHitRate.percentString)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppTheme.accentBlue)
+                    Text("命中 \(breakdown.cachedInputTokens.abbreviatedTokens)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Text("未命中 \(breakdown.uncachedInputTokens.abbreviatedTokens)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Text("\(breakdown.calls) calls")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                } else if let quotaAverage = rangeSummary.quotaAverageRemainingPercent {
+                    Text("\(Int(quotaAverage.rounded()))% 7d 平均剩余")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppTheme.quotaRemainingColor(percent: quotaAverage))
+                    Text("\(rangeSummary.calls) samples")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("\(rangeSummary.tokens.abbreviatedTokens) tokens")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppTheme.accentBlue)
+                    Text("\(rangeSummary.calls) calls")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Text("avg \(rangeSummary.average.abbreviatedTokens)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+            } else if hasRangeStart {
+                Image(systemName: "calendar.badge.plus")
+                    .foregroundStyle(AppTheme.accentBlue)
+                Text("已选起点，再点一个日期")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "hand.tap")
+                    .foregroundStyle(.secondary)
+                Text("点击开始和结束日期，可显示范围总计")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
     }
 }
 
@@ -1231,7 +1540,13 @@ private struct RecentChartPreparedData {
     let recentCacheBreakdown: TokenCacheBreakdown
     let cacheBreakdowns: [TokenCacheBreakdown]
     let carriedCacheHitRates: [Double]
+    let fiveHourRemainingPercents: [Double?]
+    let sevenDayRemainingPercents: [Double?]
+    let latestFiveHourRemaining: Double?
+    let latestSevenDayRemaining: Double?
     let hasCacheCalls: Bool
+    let hasFiveHourQuota: Bool
+    let hasSevenDayQuota: Bool
     let markerIndices: [Int]
 
     static let empty = RecentChartPreparedData(
@@ -1242,7 +1557,13 @@ private struct RecentChartPreparedData {
         recentCacheBreakdown: .empty,
         cacheBreakdowns: [],
         carriedCacheHitRates: [],
+        fiveHourRemainingPercents: [],
+        sevenDayRemainingPercents: [],
+        latestFiveHourRemaining: nil,
+        latestSevenDayRemaining: nil,
         hasCacheCalls: false,
+        hasFiveHourQuota: false,
+        hasSevenDayQuota: false,
         markerIndices: []
     )
 }
@@ -1251,6 +1572,8 @@ private struct RecentChartPlotData {
     let tokenPoints: [CGPoint]
     let callPoints: [CGPoint]
     let cachePoints: [CGPoint]
+    let fiveHourQuotaPoints: [CGPoint?]
+    let sevenDayQuotaPoints: [CGPoint?]
 
     init(bins: [BinUsage], prepared: RecentChartPreparedData, plot: CGRect, step: CGFloat) {
         tokenPoints = bins.indices.map { index in
@@ -1269,24 +1592,47 @@ private struct RecentChartPlotData {
             let y = plot.maxY - CGFloat(rate) * plot.height
             return CGPoint(x: x, y: y)
         }
+        fiveHourQuotaPoints = bins.indices.map { index in
+            guard let value = prepared.fiveHourRemainingPercents[safe: index],
+                  let percent = value else { return nil }
+            let x = plot.minX + CGFloat(index) * step
+            let y = plot.maxY - CGFloat(max(0, min(100, percent)) / 100.0) * plot.height
+            return CGPoint(x: x, y: y)
+        }
+        sevenDayQuotaPoints = bins.indices.map { index in
+            guard let value = prepared.sevenDayRemainingPercents[safe: index],
+                  let percent = value else { return nil }
+            let x = plot.minX + CGFloat(index) * step
+            let y = plot.maxY - CGFloat(max(0, min(100, percent)) / 100.0) * plot.height
+            return CGPoint(x: x, y: y)
+        }
     }
 }
 
 struct RecentUsageChart: View {
     let bins: [BinUsage]
     let cacheRecentBins: [TokenCacheBucket]
+    let quotaRecentBins: [QuotaHistoryRecentBucket]
+    private static let dataLineWidth: CGFloat = 1.55
+    private static let hoverRingLineWidth: CGFloat = 1.55
+    @AppStorage("recentChartShowTokens") private var showTokens = true
+    @AppStorage("recentChartShowCalls") private var showCalls = true
+    @AppStorage("recentChartShowCacheHitRate") private var showCacheHitRate = true
+    @AppStorage("recentChartShowFiveHourQuota") private var showFiveHourQuota = true
+    @AppStorage("recentChartShowSevenDayQuota") private var showSevenDayQuota = true
     @State private var hoveredIndex: Int?
     @State private var preparedData: RecentChartPreparedData
 
-    init(bins: [BinUsage], cacheRecentBins: [TokenCacheBucket]) {
+    init(bins: [BinUsage], cacheRecentBins: [TokenCacheBucket], quotaRecentBins: [QuotaHistoryRecentBucket]) {
         self.bins = bins
         self.cacheRecentBins = cacheRecentBins
+        self.quotaRecentBins = quotaRecentBins
         _preparedData = State(initialValue: .empty)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("最近 24 小时")
                         .font(.system(size: 19, weight: .semibold))
@@ -1297,10 +1643,22 @@ struct RecentUsageChart: View {
 
                 Spacer()
 
-                HStack(spacing: 14) {
-                    ChartLegend(color: .blue, label: "Token", value: preparedData.tokenTotal.abbreviatedTokens)
-                    ChartLegend(color: .orange, label: "调用", value: "\(preparedData.callTotal)")
-                    ChartLegend(color: AppTheme.accentCyan, label: "命中率", value: preparedData.recentCacheBreakdown.cacheHitRate.percentString)
+                VStack(alignment: .trailing, spacing: 7) {
+                    HStack(spacing: 14) {
+                        ChartLegend(color: .blue, label: "Token", value: preparedData.tokenTotal.abbreviatedTokens)
+                        ChartLegend(color: .orange, label: "调用", value: "\(preparedData.callTotal)")
+                        ChartLegend(color: AppTheme.accentCyan, label: "命中率", value: preparedData.recentCacheBreakdown.cacheHitRate.percentString)
+                        ChartLegend(color: .purple, label: "5h", value: Self.percentText(preparedData.latestFiveHourRemaining))
+                        ChartLegend(color: .green, label: "7d", value: Self.percentText(preparedData.latestSevenDayRemaining))
+                    }
+
+                    HStack(spacing: 5) {
+                        ChartLineToggle(title: "Token", color: .blue, isOn: $showTokens)
+                        ChartLineToggle(title: "调用", color: .orange, isOn: $showCalls)
+                        ChartLineToggle(title: "命中率", color: AppTheme.accentCyan, isOn: $showCacheHitRate)
+                        ChartLineToggle(title: "5h", color: .purple, isOn: $showFiveHourQuota)
+                        ChartLineToggle(title: "7d", color: .green, isOn: $showSevenDayQuota)
+                    }
                 }
             }
 
@@ -1331,30 +1689,46 @@ struct RecentUsageChart: View {
                         .stroke(AppTheme.grid, style: StrokeStyle(lineWidth: 1, dash: [4, 8]))
                     }
 
-                    tokenAreaPath(points: plotData.tokenPoints, plot: plot)
-                        .fill(
-                            LinearGradient(
-                                colors: [AppTheme.accentBlue.opacity(0.22), AppTheme.accentBlue.opacity(0.055), Color.clear],
-                                startPoint: .top,
-                                endPoint: .bottom
+                    if showTokens {
+                        tokenAreaPath(points: plotData.tokenPoints, plot: plot)
+                            .fill(
+                                LinearGradient(
+                                    colors: [AppTheme.accentBlue.opacity(0.22), AppTheme.accentBlue.opacity(0.055), Color.clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
-                        )
 
-                    linePath(points: plotData.tokenPoints)
-                        .stroke(AppTheme.accentBlue, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+                        linePath(points: plotData.tokenPoints)
+                            .stroke(AppTheme.accentBlue, style: StrokeStyle(lineWidth: Self.dataLineWidth, lineCap: .round, lineJoin: .round))
+                    }
 
-                    linePath(points: plotData.callPoints)
-                        .stroke(AppTheme.accentOrange, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    if showCalls {
+                        linePath(points: plotData.callPoints)
+                            .stroke(AppTheme.accentOrange, style: StrokeStyle(lineWidth: Self.dataLineWidth, lineCap: .round, lineJoin: .round))
+                    }
 
-                    if preparedData.hasCacheCalls {
+                    if showCacheHitRate && preparedData.hasCacheCalls {
                         linePath(points: plotData.cachePoints)
-                            .stroke(AppTheme.accentCyan, style: StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round, dash: [5, 5]))
+                            .stroke(AppTheme.accentCyan, style: StrokeStyle(lineWidth: Self.dataLineWidth, lineCap: .round, lineJoin: .round, dash: [5, 5]))
+                    }
+
+                    if showFiveHourQuota && preparedData.hasFiveHourQuota {
+                        optionalLinePath(points: plotData.fiveHourQuotaPoints)
+                            .stroke(.purple.opacity(0.92), style: StrokeStyle(lineWidth: Self.dataLineWidth, lineCap: .round, lineJoin: .round, dash: [3, 6]))
+                    }
+
+                    if showSevenDayQuota && preparedData.hasSevenDayQuota {
+                        optionalLinePath(points: plotData.sevenDayQuotaPoints)
+                            .stroke(.green.opacity(0.88), style: StrokeStyle(lineWidth: Self.dataLineWidth, lineCap: .round, lineJoin: .round, dash: [7, 5]))
                     }
 
                     if let activeIndex {
                         let tokenPoint = plotData.tokenPoints[safe: activeIndex] ?? .zero
                         let callPoint = plotData.callPoints[safe: activeIndex] ?? .zero
                         let cachePoint = plotData.cachePoints[safe: activeIndex] ?? .zero
+                        let fiveHourPoint = plotData.fiveHourQuotaPoints[safe: activeIndex] ?? nil
+                        let sevenDayPoint = plotData.sevenDayQuotaPoints[safe: activeIndex] ?? nil
 
                         Path { path in
                             path.move(to: CGPoint(x: tokenPoint.x, y: plot.minY))
@@ -1362,29 +1736,51 @@ struct RecentUsageChart: View {
                         }
                         .stroke(AppTheme.accentBlue.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
 
-                        Circle()
-                            .fill(AppTheme.pageBackground)
-                            .frame(width: 12, height: 12)
-                            .overlay(Circle().stroke(AppTheme.accentBlue, lineWidth: 3))
-                            .position(tokenPoint)
-
-                        Circle()
-                            .fill(AppTheme.pageBackground)
-                            .frame(width: 10, height: 10)
-                            .overlay(Circle().stroke(AppTheme.accentOrange, lineWidth: 2.4))
-                            .position(callPoint)
-
-                        if preparedData.cacheBreakdowns[safe: activeIndex]?.calls ?? 0 > 0 {
+                        if showTokens {
                             Circle()
                                 .fill(AppTheme.pageBackground)
                                 .frame(width: 9, height: 9)
-                                .overlay(Circle().stroke(AppTheme.accentCyan, lineWidth: 2.2))
+                                .overlay(Circle().stroke(AppTheme.accentBlue, lineWidth: Self.hoverRingLineWidth))
+                                .position(tokenPoint)
+                        }
+
+                        if showCalls {
+                            Circle()
+                                .fill(AppTheme.pageBackground)
+                                .frame(width: 8, height: 8)
+                                .overlay(Circle().stroke(AppTheme.accentOrange, lineWidth: Self.hoverRingLineWidth))
+                                .position(callPoint)
+                        }
+
+                        if showCacheHitRate && preparedData.cacheBreakdowns[safe: activeIndex]?.calls ?? 0 > 0 {
+                            Circle()
+                                .fill(AppTheme.pageBackground)
+                                .frame(width: 8, height: 8)
+                                .overlay(Circle().stroke(AppTheme.accentCyan, lineWidth: Self.hoverRingLineWidth))
                                 .position(cachePoint)
+                        }
+
+                        if showFiveHourQuota, let fiveHourPoint {
+                            Circle()
+                                .fill(AppTheme.pageBackground)
+                                .frame(width: 7, height: 7)
+                                .overlay(Circle().stroke(.purple, lineWidth: Self.hoverRingLineWidth))
+                                .position(fiveHourPoint)
+                        }
+
+                        if showSevenDayQuota, let sevenDayPoint {
+                            Circle()
+                                .fill(AppTheme.pageBackground)
+                                .frame(width: 7, height: 7)
+                                .overlay(Circle().stroke(.green, lineWidth: Self.hoverRingLineWidth))
+                                .position(sevenDayPoint)
                         }
 
                         ChartHoverBubble(
                             bin: bins[activeIndex],
                             cacheBreakdown: preparedData.cacheBreakdowns[safe: activeIndex],
+                            fiveHourRemaining: preparedData.fiveHourRemainingPercents[safe: activeIndex] ?? nil,
+                            sevenDayRemaining: preparedData.sevenDayRemainingPercents[safe: activeIndex] ?? nil,
                             isHovering: hoveredIndex != nil
                         )
                             .position(
@@ -1421,6 +1817,9 @@ struct RecentUsageChart: View {
         .onChange(of: cacheRecentBins) { _, _ in
             refreshPreparedData()
         }
+        .onChange(of: quotaRecentBins) { _, _ in
+            refreshPreparedData()
+        }
     }
 
     private func linePath(points: [CGPoint]) -> Path {
@@ -1438,6 +1837,12 @@ struct RecentUsageChart: View {
         path.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
         path.addLine(to: CGPoint(x: last.x, y: plot.maxY))
         path.closeSubpath()
+        return path
+    }
+
+    private func optionalLinePath(points: [CGPoint?]) -> Path {
+        var path = Path()
+        appendSmoothPolyline(points.compactMap { $0 }, to: &path)
         return path
     }
 
@@ -1476,17 +1881,25 @@ struct RecentUsageChart: View {
     }
 
     private func refreshPreparedData() {
-        preparedData = Self.prepare(bins: bins, cacheRecentBins: cacheRecentBins)
+        preparedData = Self.prepare(bins: bins, cacheRecentBins: cacheRecentBins, quotaRecentBins: quotaRecentBins)
     }
 
-    private static func prepare(bins: [BinUsage], cacheRecentBins: [TokenCacheBucket]) -> RecentChartPreparedData {
+    private static func prepare(bins: [BinUsage], cacheRecentBins: [TokenCacheBucket], quotaRecentBins: [QuotaHistoryRecentBucket]) -> RecentChartPreparedData {
         let cacheByStart = Dictionary(uniqueKeysWithValues: cacheRecentBins.map { bucket in
             (bucket.start, bucket.breakdown)
+        })
+        let quotaByBin = Dictionary(uniqueKeysWithValues: quotaRecentBins.map { bucket in
+            (timeBinKey(bucket.start), bucket)
         })
         let cacheBreakdowns = bins.map { bin in
             cacheByStart[bin.start] ?? .empty
         }
         let carriedRates = carriedCacheHitRates(cacheBreakdowns: cacheBreakdowns)
+        let quotaBuckets = bins.map { bin in
+            quotaByBin[timeBinKey(bin.start)]
+        }
+        let fiveHourRemaining = quotaBuckets.map { $0?.fiveHourRemainingPercent }
+        let sevenDayRemaining = quotaBuckets.map { $0?.sevenDayRemainingPercent }
         let last = bins.count - 1
         let markerIndices: [Int] = bins.count > 1
             ? [0, last / 4, last / 2, (last * 3) / 4, last].reduce(into: [Int]()) { result, index in
@@ -1504,9 +1917,24 @@ struct RecentUsageChart: View {
             recentCacheBreakdown: cacheBreakdowns.combined,
             cacheBreakdowns: cacheBreakdowns,
             carriedCacheHitRates: carriedRates,
+            fiveHourRemainingPercents: fiveHourRemaining,
+            sevenDayRemainingPercents: sevenDayRemaining,
+            latestFiveHourRemaining: fiveHourRemaining.reversed().compactMap { $0 }.first,
+            latestSevenDayRemaining: sevenDayRemaining.reversed().compactMap { $0 }.first,
             hasCacheCalls: cacheBreakdowns.contains { $0.calls > 0 },
+            hasFiveHourQuota: fiveHourRemaining.contains { $0 != nil },
+            hasSevenDayQuota: sevenDayRemaining.contains { $0 != nil },
             markerIndices: markerIndices
         )
+    }
+
+    private static func timeBinKey(_ date: Date) -> Int {
+        Int(floor(date.timeIntervalSince1970 / 300.0))
+    }
+
+    private static func percentText(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return "\(Int(value.rounded()))%"
     }
 
     private static func carriedCacheHitRates(cacheBreakdowns: [TokenCacheBreakdown]) -> [Double] {
@@ -1541,9 +1969,43 @@ struct ChartLegend: View {
     }
 }
 
+struct ChartLineToggle: View {
+    let title: String
+    let color: Color
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            isOn.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isOn ? color : .secondary)
+                Text(title)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(isOn ? .primary : .secondary)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isOn ? color.opacity(0.10) : AppTheme.raisedBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(isOn ? color.opacity(0.28) : AppTheme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct ChartHoverBubble: View {
     let bin: BinUsage
     let cacheBreakdown: TokenCacheBreakdown?
+    let fiveHourRemaining: Double?
+    let sevenDayRemaining: Double?
     let isHovering: Bool
 
     var body: some View {
@@ -1567,6 +2029,11 @@ struct ChartHoverBubble: View {
                     .font(.system(size: 10))
                     .foregroundStyle(AppTheme.accentCyan)
             }
+            if fiveHourRemaining != nil || sevenDayRemaining != nil {
+                Text("额度 5h \(percentText(fiveHourRemaining)) · 7d \(percentText(sevenDayRemaining))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -1584,6 +2051,11 @@ struct ChartHoverBubble: View {
     private var timeRange: String {
         let end = bin.start.addingTimeInterval(5 * 60)
         return "\(DateFormatter.hourMinute.string(from: bin.start)) - \(DateFormatter.hourMinute.string(from: end))"
+    }
+
+    private func percentText(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return "\(Int(value.rounded()))%"
     }
 }
 
@@ -1610,22 +2082,26 @@ struct ChartTimeMarkers: View {
 
 struct HoverTrackingArea: NSViewRepresentable {
     let onMove: (CGPoint) -> Void
+    var onClick: ((CGPoint) -> Void)? = nil
     let onExit: () -> Void
 
     func makeNSView(context: Context) -> TrackingView {
         let view = TrackingView()
         view.onMove = onMove
+        view.onClick = onClick
         view.onExit = onExit
         return view
     }
 
     func updateNSView(_ nsView: TrackingView, context: Context) {
         nsView.onMove = onMove
+        nsView.onClick = onClick
         nsView.onExit = onExit
     }
 
     final class TrackingView: NSView {
         var onMove: ((CGPoint) -> Void)?
+        var onClick: ((CGPoint) -> Void)?
         var onExit: (() -> Void)?
         private var currentTrackingArea: NSTrackingArea?
 
@@ -1671,10 +2147,18 @@ struct HoverTrackingArea: NSViewRepresentable {
             onMove?(convert(event.locationInWindow, from: nil))
         }
 
+        override func mouseDown(with event: NSEvent) {
+            onClick?(convert(event.locationInWindow, from: nil))
+        }
+
         override func mouseExited(with event: NSEvent) {
             onExit?()
         }
     }
+}
+
+private extension Notification.Name {
+    static let dashboardBlankAreaClicked = Notification.Name("CodexTokenBarDashboardBlankAreaClicked")
 }
 
 extension Collection {
