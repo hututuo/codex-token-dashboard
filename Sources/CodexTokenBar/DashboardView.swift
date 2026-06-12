@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct DashboardView: View {
+    @ObservedObject var loginItemStore: LoginItemStore
+    @ObservedObject var updateSettingsStore: AppUpdateSettingsStore
     @StateObject private var store = CodexUsageStore()
     @StateObject private var quotaStore = AccountQuotaStore()
     @StateObject private var quotaHistoryStore = QuotaHistoryStore()
@@ -19,9 +21,13 @@ struct DashboardView: View {
     @AppStorage("preciseTokenCountingEnabled") private var preciseTokenCountingEnabled = false
     @AppStorage("floatingPanelOpacity") private var floatingPanelOpacity = 0.88
     @AppStorage("floatingPanelScale") private var floatingPanelScale = FloatingTokenPanelMetrics.defaultScale
+    @AppStorage("setupGuideCompletedV01") private var setupGuideCompleted = false
     @State private var showingProviderSync = false
+    @State private var showingSetupGuide = false
 
-    init() {
+    init(loginItemStore: LoginItemStore, updateSettingsStore: AppUpdateSettingsStore) {
+        self.loginItemStore = loginItemStore
+        self.updateSettingsStore = updateSettingsStore
         Self.applyStartupDisplayModeRepairIfNeeded()
     }
 
@@ -111,6 +117,11 @@ struct DashboardView: View {
             quotaStore.start()
             updateTokenDisplaySurface()
             updateUsageRefreshCadence()
+            if !setupGuideCompleted {
+                showingSetupGuide = true
+            } else {
+                StartupPresentation.hideDashboardIfNeeded()
+            }
         }
         .onChange(of: tokenDisplayModeRaw) {
             updateTokenDisplaySurface()
@@ -141,6 +152,20 @@ struct DashboardView: View {
             ProviderSyncPage(
                 store: providerSyncStore,
                 dataSource: store.currentDataSource
+            )
+        }
+        .sheet(isPresented: $showingSetupGuide) {
+            SetupGuideView(
+                dataSource: store.currentDataSource,
+                dataSourceLabel: store.dataSourceLabel,
+                dataSourceOrigin: store.dataSourceOrigin,
+                loginItemStore: loginItemStore,
+                updateSettingsStore: updateSettingsStore,
+                onChooseDirectory: store.chooseDataSourceDirectory,
+                onFinish: {
+                    setupGuideCompleted = true
+                    showingSetupGuide = false
+                }
             )
         }
         .toolbar {
@@ -552,6 +577,9 @@ struct ActivitySection: View {
 struct ActivityModeSelector: View {
     @Binding var selectedMode: ActivityMode
 
+    private let regularModes: [ActivityMode] = [.daily, .weekly, .cumulative]
+    private let specialModes: [ActivityMode] = [.cacheHitRate, .quotaRemaining]
+
     var body: some View {
         HStack(spacing: 4) {
             Text("Mode")
@@ -559,22 +587,20 @@ struct ActivityModeSelector: View {
                 .foregroundStyle(.primary)
 
             HStack(spacing: 2) {
-                ForEach(ActivityMode.allCases) { mode in
-                    Button {
-                        selectedMode = mode
-                    } label: {
-                        Text(mode.rawValue)
-                            .font(.system(size: 13, weight: selectedMode == mode ? .semibold : .medium))
-                            .foregroundStyle(labelColor(for: mode))
-                            .frame(width: mode == .cacheHitRate ? 58 : 42, height: 25)
-                            .background(background(for: mode))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .stroke(mode.isSpecial ? AppTheme.accentBlue.opacity(selectedMode == mode ? 0.95 : 0.55) : Color.clear, lineWidth: 1.2)
-                            )
-                    }
-                    .buttonStyle(.plain)
+                ForEach(regularModes) { mode in
+                    modeButton(mode, width: 42)
                 }
+
+                HStack(spacing: 2) {
+                    ForEach(specialModes) { mode in
+                        modeButton(mode, width: 42, groupedSpecial: true)
+                    }
+                }
+                .padding(2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(AppTheme.accentBlue.opacity(0.26), lineWidth: 1)
+                )
             }
             .padding(3)
             .background(
@@ -582,6 +608,25 @@ struct ActivityModeSelector: View {
                     .fill(AppTheme.raisedBackground)
             )
         }
+    }
+
+    private func modeButton(_ mode: ActivityMode, width: CGFloat, groupedSpecial: Bool = false) -> some View {
+        Button {
+            selectedMode = mode
+        } label: {
+            Text(mode.rawValue)
+                .font(.system(size: groupedSpecial ? 12 : 13, weight: selectedMode == mode ? .semibold : .medium))
+                .foregroundStyle(labelColor(for: mode))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(width: width, height: 25)
+                .background(background(for: mode))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(Color.clear, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func labelColor(for mode: ActivityMode) -> Color {
@@ -1609,6 +1654,8 @@ private struct RecentChartPlotData {
     }
 }
 
+private let recentChartHoverBubbleVerticalOffset: CGFloat = 50
+
 struct RecentUsageChart: View {
     let bins: [BinUsage]
     let cacheRecentBins: [TokenCacheBucket]
@@ -1665,7 +1712,7 @@ struct RecentUsageChart: View {
             GeometryReader { proxy in
                 let plot = CGRect(x: 0, y: 18, width: proxy.size.width, height: proxy.size.height - 42)
                 let step = plot.width / CGFloat(max(bins.count - 1, 1))
-                let activeIndex = hoveredIndex.flatMap { bins.indices.contains($0) ? $0 : nil } ?? bins.indices.last
+                let activeIndex = hoveredIndex.flatMap { bins.indices.contains($0) ? $0 : nil }
                 let plotData = RecentChartPlotData(bins: bins, prepared: preparedData, plot: plot, step: step)
 
                 ZStack(alignment: .topLeading) {
@@ -1781,12 +1828,10 @@ struct RecentUsageChart: View {
                             cacheBreakdown: preparedData.cacheBreakdowns[safe: activeIndex],
                             fiveHourRemaining: preparedData.fiveHourRemainingPercents[safe: activeIndex] ?? nil,
                             sevenDayRemaining: preparedData.sevenDayRemainingPercents[safe: activeIndex] ?? nil,
-                            isHovering: hoveredIndex != nil
+                            isHovering: true
                         )
-                            .position(
-                                x: min(max(tokenPoint.x + 88, 94), plot.maxX - 94),
-                                y: max(plot.minY + 38, tokenPoint.y - 34)
-                            )
+                            .chartBubblePlacement(tokenX: tokenPoint.x, plot: plot)
+                            .zIndex(10)
                     }
 
                     HoverTrackingArea(
@@ -2001,6 +2046,35 @@ struct ChartLineToggle: View {
     }
 }
 
+private extension View {
+    func chartBubblePlacement(tokenX: CGFloat, plot: CGRect) -> some View {
+        modifier(ChartBubblePlacementModifier(tokenX: tokenX, plot: plot))
+    }
+}
+
+private struct ChartBubblePlacementModifier: ViewModifier {
+    let tokenX: CGFloat
+    let plot: CGRect
+
+    func body(content: Content) -> some View {
+        let plot = self.plot
+        let tokenX = self.tokenX
+        content
+            .fixedSize(horizontal: true, vertical: false)
+            .alignmentGuide(.leading) { dimensions in
+                let lower = plot.minX
+                let upper = max(lower, plot.maxX - dimensions.width)
+                let centered = tokenX - dimensions.width / 2
+                return -min(max(centered, lower), upper)
+            }
+            .alignmentGuide(.top) { dimensions in
+                -(plot.minY - recentChartHoverBubbleVerticalOffset - dimensions.height / 2)
+            }
+            .frame(width: plot.width, height: plot.height, alignment: .topLeading)
+            .allowsHitTesting(false)
+    }
+}
+
 struct ChartHoverBubble: View {
     let bin: BinUsage
     let cacheBreakdown: TokenCacheBreakdown?
@@ -2037,6 +2111,7 @@ struct ChartHoverBubble: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .fixedSize(horizontal: true, vertical: false)
         .background(AppTheme.hoverBubble, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)

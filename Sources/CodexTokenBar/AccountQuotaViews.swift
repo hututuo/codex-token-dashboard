@@ -4,51 +4,65 @@ struct AccountQuotaStrip: View {
     let snapshot: AccountQuotaSnapshot
 
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Label(
-                    snapshot.displayName,
-                    systemImage: snapshot.isAvailable ? "gauge.with.dots.needle.33percent" : "gauge.with.dots.needle.0percent"
-                )
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(snapshot.isAvailable ? .primary : .secondary)
-                .lineLimit(1)
-
-                Text(snapshot.isAvailable ? "本地账户额度" : snapshot.status)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(
+                        snapshot.displayName,
+                        systemImage: snapshot.isAvailable ? "gauge.with.dots.needle.33percent" : "gauge.with.dots.needle.0percent"
+                    )
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(snapshot.isAvailable ? .primary : .secondary)
                     .lineLimit(1)
-            }
-            .frame(width: 104, alignment: .leading)
 
-            HStack(spacing: 8) {
-                if let fiveHour = snapshot.fiveHour {
-                    AccountQuotaSegment(window: fiveHour, accent: AppTheme.accentCyan)
-                }
-                if let sevenDay = snapshot.sevenDay {
-                    AccountQuotaSegment(window: sevenDay, accent: AppTheme.accentBlue)
-                }
-                if !snapshot.isAvailable {
-                    Text(snapshot.status)
-                        .font(.system(size: 10, weight: .medium))
+                    Text(snapshot.isAvailable ? "本地账户额度" : snapshot.status)
+                        .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: 104, alignment: .leading)
 
-            AccountQuotaPaceInsight(snapshot: snapshot)
-                .padding(.leading, 10)
+                HStack(spacing: 8) {
+                    if let fiveHour = snapshot.fiveHour {
+                        AccountQuotaSegment(window: fiveHour, accent: AppTheme.accentCyan)
+                    }
+                    if let sevenDay = snapshot.sevenDay {
+                        AccountQuotaSegment(window: sevenDay, accent: AppTheme.accentBlue)
+                    }
+                    if !snapshot.isAvailable {
+                        Text(snapshot.status)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                AccountQuotaPaceInsight(snapshot: snapshot)
+                    .padding(.leading, 10)
+            }
+
+            if shouldShowRetryHint {
+                Text("可能由于网络等原因读取失败，点击“立即刷新”进行重试。")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppTheme.accentBlue)
+                    .lineLimit(1)
+                    .padding(.leading, 122)
+            }
         }
         .padding(.leading, 12)
         .padding(.trailing, 12)
-        .padding(.vertical, 7)
-        .frame(maxWidth: 980, minHeight: 54)
+        .padding(.vertical, shouldShowRetryHint ? 6 : 7)
+        .frame(maxWidth: 980, minHeight: shouldShowRetryHint ? 66 : 54)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.insetBackground)
         )
         .help(helpText)
+    }
+
+    private var shouldShowRetryHint: Bool {
+        !snapshot.isAvailable && snapshot.status.contains("失败")
     }
 
     private var helpText: String {
@@ -113,7 +127,6 @@ struct AccountQuotaSegment: View {
         .frame(maxWidth: .infinity)
     }
 }
-
 struct AccountQuotaPaceInsight: View {
     let snapshot: AccountQuotaSnapshot
 

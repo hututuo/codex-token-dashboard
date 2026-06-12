@@ -47,12 +47,7 @@ enum TokenDisplayMode: String, CaseIterable, Identifiable {
     }
 
     var controlLabel: String {
-        switch self {
-        case .statusBar:
-            return "状态栏（待开发）"
-        default:
-            return label
-        }
+        label
     }
 
     var systemImage: String {

@@ -7,9 +7,6 @@ final class LoginItemStore: ObservableObject {
     @Published private(set) var status: SMAppService.Status = SMAppService.mainApp.status
     @Published private(set) var errorMessage: String?
 
-    private let defaults = UserDefaults.standard
-    private let defaultAppliedKey = "launchAtLoginDefaultAppliedV01"
-
     var isOn: Bool {
         status == .enabled || status == .requiresApproval
     }
@@ -35,8 +32,6 @@ final class LoginItemStore: ObservableObject {
 
     func start() {
         refresh()
-        guard !defaults.bool(forKey: defaultAppliedKey) else { return }
-        setEnabled(true, markDefaultApplied: true)
     }
 
     func refresh() {
@@ -44,7 +39,7 @@ final class LoginItemStore: ObservableObject {
     }
 
     func setEnabled(_ enabled: Bool) {
-        setEnabled(enabled, markDefaultApplied: false)
+        applyEnabled(enabled)
     }
 
     func openLoginItemsSettings() {
@@ -52,7 +47,7 @@ final class LoginItemStore: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    private func setEnabled(_ enabled: Bool, markDefaultApplied: Bool) {
+    private func applyEnabled(_ enabled: Bool) {
         do {
             if enabled {
                 if status != .enabled && status != .requiresApproval {
@@ -64,9 +59,6 @@ final class LoginItemStore: ObservableObject {
                 }
             }
             errorMessage = nil
-            if markDefaultApplied {
-                defaults.set(true, forKey: defaultAppliedKey)
-            }
         } catch {
             errorMessage = error.localizedDescription
         }

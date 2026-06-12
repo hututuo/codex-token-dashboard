@@ -4,18 +4,37 @@ import SwiftUI
 @main
 struct CodexTokenBarApp: App {
     @StateObject private var loginItemStore = LoginItemStore()
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    @StateObject private var updateSettingsStore: AppUpdateSettingsStore
+    private let updaterController: SPUStandardUpdaterController
+
+    init() {
+        let updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        self.updaterController = updaterController
+        _updateSettingsStore = StateObject(wrappedValue: AppUpdateSettingsStore(updater: updaterController.updater))
+        StartupPresentation.configureInitialActivationPolicy()
+    }
 
     var body: some Scene {
-        WindowGroup {
-            DashboardView()
+        WindowGroup(id: "dashboard") {
+            DashboardView(
+                loginItemStore: loginItemStore,
+                updateSettingsStore: updateSettingsStore
+            )
                 .frame(minWidth: 1080, minHeight: 760)
                 .task {
                     loginItemStore.start()
+                    updateSettingsStore.refresh()
+#if DEBUG
+                    if UserDefaults.standard.bool(forKey: "debugCheckForUpdatesOnLaunch") {
+                        UserDefaults.standard.set(false, forKey: "debugCheckForUpdatesOnLaunch")
+                        try? await Task.sleep(nanoseconds: 900_000_000)
+                        updaterController.updater.checkForUpdates()
+                    }
+#endif
                 }
         }
         .windowStyle(.hiddenTitleBar)
@@ -25,6 +44,14 @@ struct CodexTokenBarApp: App {
                 CheckForUpdatesMenuItem(updater: updaterController.updater)
 
                 Divider()
+
+                Toggle(
+                    updateSettingsStore.menuTitle,
+                    isOn: Binding(
+                        get: { updateSettingsStore.automaticChecksEnabled },
+                        set: { updateSettingsStore.setAutomaticChecksEnabled($0) }
+                    )
+                )
 
                 Toggle(
                     loginItemStore.menuTitle,
@@ -47,5 +74,14 @@ struct CodexTokenBarApp: App {
                 Divider()
             }
         }
+
+        MenuBarExtra("Codex Token Bar", systemImage: "bolt.circle.fill") {
+            DashboardMenuBarExtra(
+                loginItemStore: loginItemStore,
+                updateSettingsStore: updateSettingsStore,
+                updater: updaterController.updater
+            )
+        }
+        .menuBarExtraStyle(.menu)
     }
 }
