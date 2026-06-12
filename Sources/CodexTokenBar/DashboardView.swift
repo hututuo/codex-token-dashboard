@@ -48,57 +48,61 @@ struct DashboardView: View {
                     NotificationCenter.default.post(name: .dashboardBlankAreaClicked, object: nil)
                 }
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 18) {
-                    HeaderView(
-                        snapshot: store.snapshot,
-                        quotaSnapshot: quotaStore.snapshot,
-                        status: store.status,
-                        dataSourceLabel: store.dataSourceLabel,
-                        dataSourceOrigin: store.dataSourceOrigin,
-                        isRefreshing: store.isRefreshing,
-                        onRefresh: refreshAllData,
-                        onChangeDirectory: store.chooseDataSourceDirectory,
-                        onOpenProviderSync: {
-                            showingProviderSync = true
-                            providerSyncStore.scan(dataSource: store.currentDataSource)
-                        }
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        HeaderView(
+                            snapshot: store.snapshot,
+                            quotaSnapshot: quotaStore.snapshot,
+                            status: store.status,
+                            dataSourceLabel: store.dataSourceLabel,
+                            dataSourceOrigin: store.dataSourceOrigin,
+                            isRefreshing: store.isRefreshing,
+                            onRefresh: refreshAllData,
+                            onChangeDirectory: store.chooseDataSourceDirectory,
+                            onOpenProviderSync: {
+                                showingProviderSync = true
+                                providerSyncStore.scan(dataSource: store.currentDataSource)
+                            }
+                        )
+
+                        StatStrip(stats: store.snapshot.stats)
+
+                        LiveRateView(
+                            monitor: liveMonitor,
+                            tokenDisplayMode: tokenDisplayMode,
+                            preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
+                            floatingPanelOpacity: $floatingPanelOpacity,
+                            floatingPanelScale: $floatingPanelScale
+                        )
+
+                        ActivitySection(
+                            dailyUsage: store.snapshot.dailyUsage,
+                            cacheDaily: store.snapshot.cacheUsage.daily,
+                            quotaDaily: quotaHistoryStore.snapshot.daily,
+                            selectedMode: $store.selectedMode
+                        )
+
+                        RecentUsageChart(
+                            bins: store.snapshot.recentBins,
+                            cacheRecentBins: store.snapshot.cacheUsage.recentBins,
+                            quotaRecentBins: quotaHistoryStore.snapshot.recentBins
+                        )
+
+                        CacheHitRankingSection(cacheUsage: store.snapshot.cacheUsage)
+                    }
+                    .padding(.horizontal, 54)
+                    .padding(.vertical, 20)
+                    .frame(minWidth: proxy.size.width, maxWidth: .infinity, alignment: .top)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                NotificationCenter.default.post(name: .dashboardBlankAreaClicked, object: nil)
+                            }
                     )
-
-                    StatStrip(stats: store.snapshot.stats)
-
-                    LiveRateView(
-                        monitor: liveMonitor,
-                        tokenDisplayMode: tokenDisplayMode,
-                        preciseTokenCountingEnabled: $preciseTokenCountingEnabled,
-                        floatingPanelOpacity: $floatingPanelOpacity,
-                        floatingPanelScale: $floatingPanelScale
-                    )
-
-                    ActivitySection(
-                        dailyUsage: store.snapshot.dailyUsage,
-                        cacheDaily: store.snapshot.cacheUsage.daily,
-                        quotaDaily: quotaHistoryStore.snapshot.daily,
-                        selectedMode: $store.selectedMode
-                    )
-
-                    RecentUsageChart(
-                        bins: store.snapshot.recentBins,
-                        cacheRecentBins: store.snapshot.cacheUsage.recentBins,
-                        quotaRecentBins: quotaHistoryStore.snapshot.recentBins
-                    )
-
-                    CacheHitRankingSection(cacheUsage: store.snapshot.cacheUsage)
                 }
-                .padding(.horizontal, 54)
-                .padding(.vertical, 20)
-                .background(
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            NotificationCenter.default.post(name: .dashboardBlankAreaClicked, object: nil)
-                        }
-                )
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
