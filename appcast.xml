@@ -3,6 +3,35 @@
     <channel>
         <title>Codex Token Bar</title>
         <item>
+            <title>0.3.1</title>
+            <pubDate>Fri, 12 Jun 2026 20:08:21 +0800</pubDate>
+            <sparkle:version>301</sparkle:version>
+            <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# Codex Token Bar v0.3.1
+
+This release polishes the first-run experience, update path, and the live dashboard details.
+
+## Highlights
+
+- New first-run setup guide: confirms the Codex directory, recommends launch-at-login, and lets you enable automatic update checks.
+- New menu bar control: open the main window, check for updates, toggle automatic update checks, toggle launch-at-login, or quit from the macOS status bar.
+- Launch-at-login now starts quietly after setup, keeping the floating/status token meter available without opening the full dashboard.
+- Account quota display now shows a retry hint when quota reading fails, so transient network/API failures are easier to recover from.
+- The recent 24-hour chart hover card now appears only while hovering and floats above the curve without clipping at the edges.
+- The activity mode selector and README screenshots were refreshed to show cache hit rate, quota lines, and the new floating panel layout.
+- Release packaging keeps the styled DMG background and the Sparkle update signature checks from the v0.3.0 release line.
+
+## Update Notes
+
+- Sparkle checks the GitHub appcast when automatic update checks are enabled, or when you choose `Codex Token Bar -> Check for Updates...`.
+- Updates are still user-confirmed; the app does not silently install a new version in the background.
+- The app remains ad-hoc signed and is not Apple notarized. Verify the SHA256 checksum before opening if macOS warns about an unidentified developer.
+]]></description>
+            <enclosure url="https://github.com/hututuo/codex-token-bar/releases/download/v0.3.1/CodexTokenBar-v0.3.1-macos-arm64.app.zip" length="4820002" type="application/octet-stream" sparkle:edSignature="Q6We12qVdG0CaxehZWm8VHyZ+1cgb5b4nYCa1XZjZMqTGzHiIzAGaqnatuwVq4Zu597IkvLcr4bM6f1j+mPZDQ=="/>
+        </item>
+        <item>
             <title>0.3.0</title>
             <pubDate>Thu, 11 Jun 2026 01:51:57 +0800</pubDate>
             <sparkle:version>300</sparkle:version>

@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Codex Token Bar"
 PRODUCT_NAME="CodexTokenBar"
 CONFIGURATION="${1:-debug}"
-APP_VERSION="${APP_VERSION:-0.3.0}"
-APP_BUILD="${APP_BUILD:-300}"
+APP_VERSION="${APP_VERSION:-0.3.1}"
+APP_BUILD="${APP_BUILD:-301}"
 BUNDLE_ID="local.codex.token-bar"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/hututuo/codex-token-bar/main/appcast.xml}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-gzOiRKuKM4MkXj1OaYuL40U39RvfEWavuB8PaOdMDq0=}"
@@ -44,7 +44,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
+  <string>zh_CN</string>
   <key>CFBundleExecutable</key>
   <string>CodexTokenBar</string>
   <key>CFBundleIdentifier</key>
@@ -55,6 +55,13 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <string>6.0</string>
   <key>CFBundleName</key>
   <string>Codex Token Bar</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>zh_CN</string>
+    <string>zh_TW</string>
+    <string>zh_HK</string>
+    <string>en</string>
+  </array>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
